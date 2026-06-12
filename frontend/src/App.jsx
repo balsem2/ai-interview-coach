@@ -38,6 +38,19 @@ function App() {
       })
   }, [])
 
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setUser(null)
+      setPage("login")
+    }
+
+    window.addEventListener("auth-expired", handleAuthExpired)
+
+    return () => {
+      window.removeEventListener("auth-expired", handleAuthExpired)
+    }
+  }, [])
+
   const onNavigate = (newPage) => {
     if (newPage === "logout") {
       localStorage.removeItem("token")

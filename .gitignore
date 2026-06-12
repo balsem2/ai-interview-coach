@@ -10,6 +10,9 @@ backend/venv/
 *.env
 backend/.env
 
+# Local datasets
+backend/app/data/*.json
+
 # Node
 node_modules/
 frontend/node_modules/

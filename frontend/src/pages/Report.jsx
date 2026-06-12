@@ -1,4 +1,8 @@
+import { useEffect, useState } from "react";
+import { jsPDF } from "jspdf";
+
 import { AppShell, Icon } from "../components/AppShell";
+import { getFinalReport } from "../services/api";
 
 function MiniLineChart() {
   return (
@@ -42,6 +46,95 @@ function RadarChart() {
 }
 
 function Report({ onNavigate }) {
+  const [aiReport, setAiReport] = useState(null);
+  const [reportError, setReportError] = useState("");
+  const [isLoadingReport, setIsLoadingReport] = useState(true);
+
+  useEffect(() => {
+    getFinalReport()
+      .then((data) => {
+        setAiReport(data);
+        setReportError("");
+      })
+      .catch((error) => {
+        console.error(error);
+        setReportError(error.message || "Unable to generate report.");
+      })
+      .finally(() => {
+        setIsLoadingReport(false);
+      });
+  }, []);
+
+  const overallScore = aiReport?.average_score ? Math.round(aiReport.average_score) : 88;
+
+  const handleDownloadPdf = async () => {
+    let reportForPdf = aiReport;
+
+    if (!reportForPdf) {
+      try {
+        reportForPdf = await getFinalReport();
+        setAiReport(reportForPdf);
+        setReportError("");
+      } catch (error) {
+        console.error(error);
+        setReportError(error.message || "Unable to generate report.");
+        reportForPdf = {
+          average_score: null,
+          total_answers: 0,
+          summary: "The AI report could not be generated yet. Please answer at least one question and try again."
+        };
+      }
+    }
+
+    const pdfScore = reportForPdf?.average_score ? Math.round(reportForPdf.average_score) : 0;
+    const pdfTotalAnswers = reportForPdf?.total_answers ?? 0;
+    const pdfReportText = reportForPdf?.summary || "No saved interview answers found yet. Answer at least one question before downloading the report.";
+
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4"
+    });
+
+    const margin = 18;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const maxLineWidth = pageWidth - margin * 2;
+    let y = 22;
+
+    const addTextBlock = (text, fontSize = 11, lineHeight = 7) => {
+      pdf.setFontSize(fontSize);
+      const lines = pdf.splitTextToSize(text, maxLineWidth);
+
+      lines.forEach((line) => {
+        if (y > pageHeight - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+
+        pdf.text(line, margin, y);
+        y += lineHeight;
+      });
+    };
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(20);
+    pdf.text("AI Interview Report", margin, y);
+    y += 12;
+
+    pdf.setFont("helvetica", "normal");
+    addTextBlock(`Overall Score: ${pdfScore}%`, 12, 8);
+    addTextBlock(`Total Answers: ${pdfTotalAnswers}`, 12, 8);
+    y += 4;
+
+    pdf.setFont("helvetica", "bold");
+    addTextBlock("AI Feedback & Recommendations", 14, 8);
+    pdf.setFont("helvetica", "normal");
+    addTextBlock(pdfReportText, 11, 7);
+
+    pdf.save("interview-report.pdf");
+  };
+
   return (
     <AppShell active="report" onNavigate={onNavigate}>
       <div className="report-header">
@@ -51,14 +144,14 @@ function Report({ onNavigate }) {
         </div>
         <div className="report-actions">
           <button className="outline-button" type="button"><Icon name="share" /> Share</button>
-          <button className="primary-button" type="button"><Icon name="download" /> Download PDF</button>
+          <button className="primary-button" type="button" onClick={handleDownloadPdf}><Icon name="download" /> Download PDF</button>
         </div>
       </div>
 
       <section className="report-stats">
         <article className="score-card">
           <Icon name="medal" />
-          <strong>88%</strong>
+          <strong>{overallScore}%</strong>
           <span>Overall Score</span>
           <em>Excellent Performance</em>
         </article>
@@ -93,12 +186,13 @@ function Report({ onNavigate }) {
 
       <section className="card feedback-card">
         <h2>AI Feedback &amp; Recommendations</h2>
-        <div className="feedback-grid">
-          <div className="feedback good"><strong>Excellent Technical Knowledge</strong><span>You demonstrated strong understanding of core concepts and provided detailed, accurate responses.</span></div>
-          <div className="feedback good"><strong>Clear Communication</strong><span>Your answers were well-structured and easy to follow, using the STAR method effectively.</span></div>
-          <div className="feedback warn"><strong>Eye Contact Consistency</strong><span>Maintain eye contact throughout your response. You looked away during the middle section of some answers.</span></div>
-          <div className="feedback warn"><strong>Response Pacing</strong><span>Consider pausing briefly before answering to gather your thoughts and deliver more measured responses.</span></div>
-        </div>
+        {isLoadingReport && <p className="report-summary">Generating your AI report...</p>}
+        {reportError && <p className="auth-error">{reportError}</p>}
+        {aiReport && (
+          <p className="report-summary">
+            {aiReport.summary}
+          </p>
+        )}
       </section>
 
       <section className="card breakdown-card">

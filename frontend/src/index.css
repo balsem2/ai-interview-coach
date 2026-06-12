@@ -20,7 +20,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -61,8 +62,8 @@ button:disabled {
   place-items: center;
   margin: 0 auto 22px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #6865f4 0%, #8a55eb 100%);
-  box-shadow: 0 17px 38px rgba(105, 93, 239, 0.26);
+  background: linear-gradient(135deg, #5d61f2, #8956ed);
+  box-shadow: 0 17px 38px rgba(93, 97, 242, 0.26);
 }
 
 .auth-logo svg {
@@ -295,7 +296,7 @@ button:disabled {
   place-items: center;
   flex: 0 0 auto;
   border-radius: 14px;
-  background: linear-gradient(135deg, #635cf0, #8a55ed);
+  background: linear-gradient(135deg, #5d61f2, #8956ed);
 }
 
 .brand-mark svg,
@@ -774,6 +775,90 @@ button:disabled {
   padding: 28px;
 }
 
+.filter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+}
+
+.filter-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #667085;
+  font-weight: 700;
+}
+
+.filter-card select {
+  height: 44px;
+  border: 1px solid #e5e9f3;
+  border-radius: 11px;
+  padding: 0 12px;
+  color: #1f2433;
+  background: #fbfcff;
+}
+
+.filter-card button {
+  height: 46px;
+  border: 0;
+  border-radius: 12px;
+  color: #ffffff;
+  background: linear-gradient(90deg, #5d61f2, #8956ed);
+  font-weight: 800;
+}
+
+.setup-screen {
+  min-height: calc(100svh - 72px);
+  display: grid;
+  place-items: start center;
+  padding-top: 22px;
+}
+
+.setup-card {
+  width: min(100%, 744px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 30px;
+  box-sizing: border-box;
+}
+
+.setup-card h1 {
+  margin: 0;
+  color: #050b18;
+  font-size: 26px;
+}
+
+.setup-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #667085;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.setup-card select {
+  height: 56px;
+  border: 1px solid #dfe5f3;
+  border-radius: 13px;
+  padding: 0 18px;
+  color: #020617;
+  background: #fbfcff;
+  font-size: 16px;
+}
+
+.setup-card button {
+  height: 56px;
+  border: 0;
+  border-radius: 13px;
+  color: #ffffff;
+  background: linear-gradient(90deg, #5d61f2, #8956ed);
+  font-size: 20px;
+  font-weight: 900;
+}
+
 .video-preview {
   position: relative;
   height: 247px;
@@ -782,6 +867,7 @@ button:disabled {
   border-radius: 13px;
   color: #667085;
   background: #dcd9f7;
+  overflow: hidden;
 }
 
 .video-preview svg {
@@ -801,6 +887,41 @@ button:disabled {
   background: #ffffff;
 }
 
+.camera-video {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-video.active {
+  display: block;
+}
+
+.face-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.face-overlay.active {
+  display: block;
+}
+
+.camera-status {
+  margin: 12px 0 0;
+  color: #667085;
+  text-align: center;
+  font-size: 14px;
+}
+
+.camera-status.speech-error {
+  color: #b91c1c;
+}
+
 .media-controls {
   display: flex;
   justify-content: center;
@@ -817,6 +938,12 @@ button:disabled {
   border-radius: 14px;
   color: #111827;
   background: #f1f3f7;
+}
+
+.media-controls button.active-control {
+  color: #ffffff;
+  background: linear-gradient(135deg, #5d61f2, #8956ed);
+  box-shadow: 0 12px 24px rgba(93, 97, 242, 0.25);
 }
 
 .live-card,
@@ -848,6 +975,11 @@ button:disabled {
 .step-row > span.active {
   color: #5d63ff;
   background: #e5e3ff;
+}
+
+.step-row > span.done {
+  color: #ffffff;
+  background: linear-gradient(135deg, #5d61f2, #8956ed);
 }
 
 .step-row strong {
@@ -908,6 +1040,12 @@ button:disabled {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.question-error {
+  margin: 14px 0 0;
+  color: #fee2e2;
+  font-size: 14px;
+}
+
 .assistant-card {
   min-height: 558px;
   display: flex;
@@ -951,27 +1089,52 @@ button:disabled {
 
 .response-box {
   display: grid;
-  grid-template-columns: 1fr 76px;
+  grid-template-columns: 1fr 58px 58px;
   gap: 14px;
+  align-items: center;
   padding: 28px;
   border-top: 1px solid #eef0f5;
 }
 
-.response-box input {
-  height: 56px;
+.response-box textarea {
+  height: 96px;
   min-width: 0;
   border: 1px solid #e5e9f3;
   border-radius: 15px;
-  padding: 0 18px;
+  padding: 16px 18px;
   outline: none;
   background: #fbfcff;
+  resize: vertical;
+  box-sizing: border-box;
 }
 
 .response-box button {
+  height: 58px;
   border: 0;
-  border-radius: 15px;
+  border-radius: 14px;
   color: #ffffff;
   background: linear-gradient(135deg, #5d61f2, #8956ed);
+}
+
+.response-box .dictate-button {
+  color: #050713;
+  background: linear-gradient(135deg, #5d61f2, #8956ed);
+}
+
+.response-box .dictate-button svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.response-box .dictate-button.active-control {
+  color: #050713;
+  background: linear-gradient(135deg, #5d61f2, #8956ed);
+  box-shadow: 0 12px 24px rgba(93, 97, 242, 0.25);
 }
 
 .report-stats {
@@ -1081,6 +1244,13 @@ button:disabled {
 
 .feedback-card {
   margin-bottom: 26px;
+}
+
+.report-summary {
+  margin: 18px 0 0;
+  white-space: pre-wrap;
+  color: #334155;
+  line-height: 1.65;
 }
 
 .feedback-grid {
