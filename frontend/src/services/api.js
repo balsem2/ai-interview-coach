@@ -1,19 +1,26 @@
-const API_BASE_URL = "http://127.0.0.1:8001"
+const API_HOST = window.location.hostname || "127.0.0.1"
+const API_BASE_URL = `http://${API_HOST}:8001`
 
 async function apiRequest(path, options = {}) {
   const token = localStorage.getItem("token")
 
-  const response = await fetch(
-    `${API_BASE_URL}${path}`,
-    {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers
-      },
-    }
-  )
+  let response
+
+  try {
+    response = await fetch(
+      `${API_BASE_URL}${path}`,
+      {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...options.headers
+        },
+      }
+    )
+  } catch {
+    throw new Error(`Backend unavailable at ${API_BASE_URL}. Start FastAPI on port 8001.`)
+  }
 
   const payload = await response.json().catch(() => ({}))
 

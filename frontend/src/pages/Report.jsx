@@ -49,6 +49,7 @@ function Report({ onNavigate }) {
   const [aiReport, setAiReport] = useState(null);
   const [reportError, setReportError] = useState("");
   const [isLoadingReport, setIsLoadingReport] = useState(true);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   useEffect(() => {
     getFinalReport()
@@ -68,71 +69,78 @@ function Report({ onNavigate }) {
   const overallScore = aiReport?.average_score ? Math.round(aiReport.average_score) : 88;
 
   const handleDownloadPdf = async () => {
-    let reportForPdf = aiReport;
+    setIsDownloadingPdf(true);
+    setReportError("");
 
-    if (!reportForPdf) {
-      try {
+    try {
+      let reportForPdf = aiReport;
+
+      if (!reportForPdf) {
         reportForPdf = await getFinalReport();
         setAiReport(reportForPdf);
-        setReportError("");
-      } catch (error) {
-        console.error(error);
-        setReportError(error.message || "Unable to generate report.");
-        reportForPdf = {
-          average_score: null,
-          total_answers: 0,
-          summary: "The AI report could not be generated yet. Please answer at least one question and try again."
-        };
       }
-    }
 
-    const pdfScore = reportForPdf?.average_score ? Math.round(reportForPdf.average_score) : 0;
-    const pdfTotalAnswers = reportForPdf?.total_answers ?? 0;
-    const pdfReportText = reportForPdf?.summary || "No saved interview answers found yet. Answer at least one question before downloading the report.";
+      const pdfScore = reportForPdf?.average_score ? Math.round(reportForPdf.average_score) : 0;
+      const pdfTotalAnswers = reportForPdf?.total_answers ?? 0;
+      const pdfReportText = reportForPdf?.summary || "No saved interview answers found yet. Answer at least one question before downloading the report.";
 
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4"
-    });
-
-    const margin = 18;
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const maxLineWidth = pageWidth - margin * 2;
-    let y = 22;
-
-    const addTextBlock = (text, fontSize = 11, lineHeight = 7) => {
-      pdf.setFontSize(fontSize);
-      const lines = pdf.splitTextToSize(text, maxLineWidth);
-
-      lines.forEach((line) => {
-        if (y > pageHeight - margin) {
-          pdf.addPage();
-          y = margin;
-        }
-
-        pdf.text(line, margin, y);
-        y += lineHeight;
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
       });
-    };
 
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(20);
-    pdf.text("AI Interview Report", margin, y);
-    y += 12;
+      const margin = 18;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const maxLineWidth = pageWidth - margin * 2;
+      let y = 22;
 
-    pdf.setFont("helvetica", "normal");
-    addTextBlock(`Overall Score: ${pdfScore}%`, 12, 8);
-    addTextBlock(`Total Answers: ${pdfTotalAnswers}`, 12, 8);
-    y += 4;
+      const addTextBlock = (text, fontSize = 11, lineHeight = 7) => {
+        pdf.setFontSize(fontSize);
+        const lines = pdf.splitTextToSize(text, maxLineWidth);
 
-    pdf.setFont("helvetica", "bold");
-    addTextBlock("AI Feedback & Recommendations", 14, 8);
-    pdf.setFont("helvetica", "normal");
-    addTextBlock(pdfReportText, 11, 7);
+        lines.forEach((line) => {
+          if (y > pageHeight - margin) {
+            pdf.addPage();
+            y = margin;
+          }
 
-    pdf.save("interview-report.pdf");
+          pdf.text(line, margin, y);
+          y += lineHeight;
+        });
+      };
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(20);
+      pdf.text("AI Interview Report", margin, y);
+      y += 12;
+
+      pdf.setFont("helvetica", "normal");
+      addTextBlock(`Overall Score: ${pdfScore}%`, 12, 8);
+      addTextBlock(`Total Answers: ${pdfTotalAnswers}`, 12, 8);
+      y += 4;
+
+      pdf.setFont("helvetica", "bold");
+      addTextBlock("AI Feedback & Recommendations", 14, 8);
+      pdf.setFont("helvetica", "normal");
+      addTextBlock(pdfReportText, 11, 7);
+
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "interview-report.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      setReportError(error.message || "Unable to download PDF.");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   };
 
   return (
@@ -144,7 +152,9 @@ function Report({ onNavigate }) {
         </div>
         <div className="report-actions">
           <button className="outline-button" type="button"><Icon name="share" /> Share</button>
-          <button className="primary-button" type="button" onClick={handleDownloadPdf}><Icon name="download" /> Download PDF</button>
+          <button className="primary-button" type="button" onClick={handleDownloadPdf} disabled={isDownloadingPdf}>
+            <Icon name="download" /> {isDownloadingPdf ? "Preparing..." : "Download PDF"}
+          </button>
         </div>
       </div>
 

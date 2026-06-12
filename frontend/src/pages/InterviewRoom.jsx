@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 import { AppShell, Icon } from "../components/AppShell";
 import { getQuestionFields, getRandomQuestion, sendChatMessage, startInterviewSession } from "../services/api";
@@ -47,6 +48,8 @@ function InterviewRoom({ onNavigate }) {
   const recognitionRef = useRef(null);
   const previousFaceRef = useRef(null);
   const autoAdvanceRef = useRef(false);
+  const faceLandmarkerRef = useRef(null);
+  const faceLandmarkerPromiseRef = useRef(null);
   const [question, setQuestion] = useState(null);
   const [questionError, setQuestionError] = useState("");
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(true);
@@ -107,6 +110,33 @@ function InterviewRoom({ onNavigate }) {
       .finally(() => {
         setIsLoadingQuestion(false);
       });
+  }, []);
+
+  const getFaceLandmarker = useCallback(async () => {
+    if (faceLandmarkerRef.current) {
+      return faceLandmarkerRef.current;
+    }
+
+    if (!faceLandmarkerPromiseRef.current) {
+      faceLandmarkerPromiseRef.current = FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+      )
+        .then((vision) => FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          numFaces: 1
+        }))
+        .then((landmarker) => {
+          faceLandmarkerRef.current = landmarker;
+          return landmarker;
+        });
+    }
+
+    return faceLandmarkerPromiseRef.current;
   }, []);
 
   useEffect(() => {
@@ -387,6 +417,9 @@ function InterviewRoom({ onNavigate }) {
       return undefined;
     }
 
+    let isCancelled = false;
+    let lastVideoTime = -1;
+
     const drawFaceBox = (box, videoWidth, videoHeight) => {
       const canvas = overlayRef.current;
       if (!canvas) {
@@ -419,69 +452,106 @@ function InterviewRoom({ onNavigate }) {
       }
     };
 
+    const updateMetricsFromBox = (face, videoWidth, videoHeight) => {
+      const centerX = (face.x + face.width / 2) / videoWidth;
+      const centerY = (face.y + face.height / 2) / videoHeight;
+      const centerDistance = Math.hypot(centerX - 0.5, (centerY - 0.45) * 1.25);
+      const eyeContact = clampScore(100 - centerDistance * 220);
+
+      const faceArea = (face.width * face.height) / (videoWidth * videoHeight);
+      const sizeScore = clampScore(100 - Math.abs(faceArea - 0.18) * 260);
+
+      const previousFace = previousFaceRef.current;
+      const movement = previousFace
+        ? Math.hypot(
+            (face.x - previousFace.x) / videoWidth,
+            (face.y - previousFace.y) / videoHeight
+          )
+        : 0;
+
+      const stability = clampScore(100 - movement * 420);
+      const confidence = clampScore(eyeContact * 0.45 + sizeScore * 0.25 + stability * 0.3);
+      const engagement = clampScore(eyeContact * 0.5 + stability * 0.3 + 20);
+
+      previousFaceRef.current = face;
+      drawFaceBox(face, videoWidth, videoHeight);
+      setFaceMetrics({ eyeContact, confidence, engagement, stability });
+      setFaceStatus("Face detected");
+    };
+
+    const markNoFace = () => {
+      clearFaceBox();
+      previousFaceRef.current = null;
+      setFaceMetrics((currentMetrics) => ({
+        eyeContact: clampScore(currentMetrics.eyeContact * 0.7),
+        confidence: clampScore(currentMetrics.confidence * 0.7),
+        engagement: clampScore(currentMetrics.engagement * 0.7),
+        stability: clampScore(currentMetrics.stability * 0.7)
+      }));
+      setFaceStatus("No face detected");
+    };
+
+    setFaceStatus("Loading face analysis...");
+
     const intervalId = window.setInterval(async () => {
       if (!videoRef.current) {
         return;
       }
 
-      if ("FaceDetector" in window) {
-        try {
-          const detector = new window.FaceDetector({ fastMode: true });
-          const faces = await detector.detect(videoRef.current);
-          const videoWidth = videoRef.current.videoWidth || 1;
-          const videoHeight = videoRef.current.videoHeight || 1;
+      const video = videoRef.current;
+      const videoWidth = video.videoWidth || 0;
+      const videoHeight = video.videoHeight || 0;
 
-          if (!faces.length) {
-            clearFaceBox();
-            previousFaceRef.current = null;
-            setFaceMetrics((currentMetrics) => ({
-              eyeContact: clampScore(currentMetrics.eyeContact * 0.7),
-              confidence: clampScore(currentMetrics.confidence * 0.7),
-              engagement: clampScore(currentMetrics.engagement * 0.7),
-              stability: clampScore(currentMetrics.stability * 0.7)
-            }));
-            setFaceStatus("No face detected");
-            return;
-          }
-
-          const face = faces
-            .map((item) => item.boundingBox)
-            .sort((a, b) => b.width * b.height - a.width * a.height)[0];
-
-          const centerX = (face.x + face.width / 2) / videoWidth;
-          const centerY = (face.y + face.height / 2) / videoHeight;
-          const centerDistance = Math.hypot(centerX - 0.5, (centerY - 0.45) * 1.25);
-          const eyeContact = clampScore(100 - centerDistance * 220);
-
-          const faceArea = (face.width * face.height) / (videoWidth * videoHeight);
-          const sizeScore = clampScore(100 - Math.abs(faceArea - 0.18) * 260);
-
-          const previousFace = previousFaceRef.current;
-          const movement = previousFace
-            ? Math.hypot(
-                (face.x - previousFace.x) / videoWidth,
-                (face.y - previousFace.y) / videoHeight
-              )
-            : 0;
-          const stability = clampScore(100 - movement * 420);
-          const confidence = clampScore(eyeContact * 0.45 + sizeScore * 0.25 + stability * 0.3);
-          const engagement = clampScore(eyeContact * 0.5 + stability * 0.3 + 20);
-
-          previousFaceRef.current = face;
-          drawFaceBox(face, videoWidth, videoHeight);
-          setFaceMetrics({ eyeContact, confidence, engagement, stability });
-          setFaceStatus(`${faces.length} face${faces.length > 1 ? "s" : ""} detected`);
-        } catch {
-          setFaceStatus("Camera active");
-        }
-      } else {
-        clearFaceBox();
-        setFaceStatus("Face analysis not supported in this browser");
+      if (!videoWidth || !videoHeight || video.readyState < 2 || video.currentTime === lastVideoTime) {
+        return;
       }
-    }, 1800);
 
-    return () => window.clearInterval(intervalId);
-  }, [isCameraOn]);
+      lastVideoTime = video.currentTime;
+
+      try {
+        const landmarker = await getFaceLandmarker();
+
+        if (isCancelled) {
+          return;
+        }
+
+        const result = landmarker.detectForVideo(video, performance.now());
+        const landmarks = result.faceLandmarks?.[0];
+
+        if (!landmarks?.length) {
+          markNoFace();
+          return;
+        }
+
+        const minX = Math.min(...landmarks.map((point) => point.x)) * videoWidth;
+        const maxX = Math.max(...landmarks.map((point) => point.x)) * videoWidth;
+        const minY = Math.min(...landmarks.map((point) => point.y)) * videoHeight;
+        const maxY = Math.max(...landmarks.map((point) => point.y)) * videoHeight;
+        const paddingX = (maxX - minX) * 0.14;
+        const paddingY = (maxY - minY) * 0.18;
+
+        updateMetricsFromBox(
+          {
+            x: Math.max(0, minX - paddingX),
+            y: Math.max(0, minY - paddingY),
+            width: Math.min(videoWidth, maxX + paddingX) - Math.max(0, minX - paddingX),
+            height: Math.min(videoHeight, maxY + paddingY) - Math.max(0, minY - paddingY)
+          },
+          videoWidth,
+          videoHeight
+        );
+      } catch (error) {
+        console.error(error);
+        clearFaceBox();
+        setFaceStatus("Face analysis failed to load");
+      }
+    }, 500);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [getFaceLandmarker, isCameraOn]);
 
   const handleApplyFilters = () => {
     setQuestionNumber(1);
@@ -628,20 +698,6 @@ function InterviewRoom({ onNavigate }) {
         </div>
 
         <div className="interview-main">
-          <article className="question-card">
-            <div className="question-title">
-              <span><Icon name="pulse" /></span>
-              <div>
-                <strong>Current Question</strong>
-                <p>{isLoadingQuestion ? "Loading question..." : currentQuestion}</p>
-              </div>
-            </div>
-            <div className="tip-box">
-              <strong>Tip:</strong> {difficulty ? `${difficulty} level - ` : ""}Structure your answer using the STAR method (Situation, Task, Action, Result)
-            </div>
-            {questionError && <p className="question-error">{questionError}</p>}
-          </article>
-
           <article className="card assistant-card">
             <header>
               <h2>AI Interview Assistant</h2>
@@ -674,6 +730,20 @@ function InterviewRoom({ onNavigate }) {
                 <Icon name="send" />
               </button>
             </form>
+          </article>
+
+          <article className="question-card">
+            <div className="question-title">
+              <span><Icon name="pulse" /></span>
+              <div>
+                <strong>Current Question</strong>
+                <p>{isLoadingQuestion ? "Loading question..." : currentQuestion}</p>
+              </div>
+            </div>
+            <div className="tip-box">
+              <strong>Tip:</strong> {difficulty ? `${difficulty} level - ` : ""}Structure your answer using the STAR method (Situation, Task, Action, Result)
+            </div>
+            {questionError && <p className="question-error">{questionError}</p>}
           </article>
         </div>
       </section>
