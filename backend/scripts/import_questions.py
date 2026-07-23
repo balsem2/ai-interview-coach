@@ -4,14 +4,19 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.database import SessionLocal
+from app.database import Base, SessionLocal, engine
 from app.models.question import Question
 
-DATASET_PATH = r"C:\Users\balse\Downloads\archive\Mock_interview_questions.json"
+DATASET_PATH = os.getenv(
+    "DATASET_PATH",
+    r"C:\Users\balse\Downloads\archive\Mock_interview_questions.json",
+)
 
 db = SessionLocal()
 
 try:
+    Base.metadata.create_all(bind=engine)
+
     existing_count = db.query(Question).count()
 
     if existing_count:

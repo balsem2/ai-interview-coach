@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: ai-interview
+data:
+  AI_PROVIDER: ollama
+  OLLAMA_URL: http://ollama:11434
+  OLLAMA_MODEL: llama3.2:1b
+  OLLAMA_TIMEOUT: "300"
+  DATASET_PATH: /app/data/Mock_interview_questions.json
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: ai-interview
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/balsem2/ai-interview-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: ai-interview
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8001
+      targetPort: 8001

@@ -1,0 +1,38 @@
+---
+- name: Corriger le certificat TLS de K3s
+  hosts: k3s_servers
+  become: true
+
+  tasks:
+    - name: Creer le dossier de configuration K3s
+      ansible.builtin.file:
+        path: /etc/rancher/k3s/config.yaml.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ajouter IP de la VM dans le certificat K3s
+      ansible.builtin.copy:
+        dest: /etc/rancher/k3s/config.yaml.d/10-tls-san.yaml
+        content: |
+          tls-san:
+            - "192.168.56.101"
+        owner: root
+        group: root
+        mode: "0600"
+    - name: Arreter K3s
+      ansible.builtin.systemd_service:
+        name: k3s
+        state: stopped
+
+    - name: Regenerer le certificat API Server
+      ansible.builtin.command:
+        cmd: k3s certificate rotate --service api-server
+      changed_when: true
+
+    - name: Redemarrer K3s
+      ansible.builtin.systemd_service:
+        name: k3s
+        state: started
+        enabled: true

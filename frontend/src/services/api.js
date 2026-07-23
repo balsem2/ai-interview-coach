@@ -1,5 +1,4 @@
-const API_HOST = window.location.hostname || "127.0.0.1"
-const API_BASE_URL = `http://${API_HOST}:8001`
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api"
 
 async function apiRequest(path, options = {}) {
   const token = localStorage.getItem("token")
@@ -19,7 +18,7 @@ async function apiRequest(path, options = {}) {
       }
     )
   } catch {
-    throw new Error(`Backend unavailable at ${API_BASE_URL}. Start FastAPI on port 8001.`)
+    throw new Error(`Backend unavailable at ${API_BASE_URL}.`)
   }
 
   const payload = await response.json().catch(() => ({}))

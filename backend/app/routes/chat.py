@@ -14,7 +14,12 @@ from app.schemas.chat_schema import (
     StartInterviewRequest,
     StartInterviewResponse,
 )
-from app.services.ai_service import estimate_score, generate_final_report, generate_interview_reply
+from app.services.ai_service import (
+    build_short_answer_feedback,
+    estimate_score,
+    generate_final_report,
+    generate_interview_reply,
+)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -80,10 +85,11 @@ def chat_message(
 
     score = estimate_score(question, payload.answer)
 
-    if score == 0:
-        reply = (
-            "This answer is too short to evaluate. I saved it with a score of 0. "
-            "For the next question, try to give at least one clear idea or example."
+    if score == 0 or len(payload.answer.split()) < 25:
+        reply = build_short_answer_feedback(
+            question=question,
+            user_answer=payload.answer,
+            score=score
         )
     else:
         reply = generate_interview_reply(

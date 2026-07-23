@@ -1,0 +1,48 @@
+---
+- name: Deploy AI Interview application to K3s
+  hosts: k3s_servers
+  become: true
+
+  tasks:
+    - name: Create Kubernetes manifests directory on server
+      file:
+        path: /opt/ai-interview/k8s
+        state: directory
+        mode: "0755"
+
+    - name: Create dataset directory on server
+      file:
+        path: /opt/ai-interview/database
+        state: directory
+        mode: "0755"
+
+    - name: Copy Kubernetes manifests to server
+      copy:
+        src: ../../k8s/
+        dest: /opt/ai-interview/k8s/
+        mode: "0644"
+
+    - name: Copy dataset to server
+      copy:
+        src: ../../database/
+        dest: /opt/ai-interview/database/
+        mode: "0644"
+
+    - name: Recreate questions import job on each deploy
+      shell: kubectl delete job import-questions -n ai-interview --ignore-not-found
+
+    - name: Apply Kubernetes manifests
+      shell: kubectl apply -f /opt/ai-interview/k8s/
+      register: deploy_output
+
+    - name: Show deploy output
+      debug:
+        var: deploy_output.stdout_lines
+
+    - name: Show application pods
+      shell: kubectl get pods -n ai-interview
+      register: pods_output
+
+    - name: Display pods
+      debug:
+        var: pods_output.stdout_lines

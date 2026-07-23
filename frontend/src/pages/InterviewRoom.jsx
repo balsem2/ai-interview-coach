@@ -76,7 +76,7 @@ function InterviewRoom({ onNavigate }) {
     {
       id: 1,
       role: "assistant",
-      text: "Hello! I'm your AI interview assistant. Let's begin with your first question."
+      text: "Hello! I'm your AI interview assistant. Here is your interview question."
     }
   ]);
 
@@ -94,7 +94,7 @@ function InterviewRoom({ onNavigate }) {
           {
             id: 1,
             role: "assistant",
-            text: "Hello! I'm your AI interview assistant. Let's begin with your first question."
+            text: "Hello! I'm your AI interview assistant. Here is your interview question."
           },
           {
             id: 2,
@@ -732,19 +732,7 @@ function InterviewRoom({ onNavigate }) {
             </form>
           </article>
 
-          <article className="question-card">
-            <div className="question-title">
-              <span><Icon name="pulse" /></span>
-              <div>
-                <strong>Current Question</strong>
-                <p>{isLoadingQuestion ? "Loading question..." : currentQuestion}</p>
-              </div>
-            </div>
-            <div className="tip-box">
-              <strong>Tip:</strong> {difficulty ? `${difficulty} level - ` : ""}Structure your answer using the STAR method (Situation, Task, Action, Result)
-            </div>
-            {questionError && <p className="question-error">{questionError}</p>}
-          </article>
+          {questionError && <p className="question-error">{questionError}</p>}
         </div>
       </section>
     </AppShell>

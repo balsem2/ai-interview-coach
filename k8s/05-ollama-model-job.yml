@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-pull-llama3-2-1b
+  namespace: ai-interview
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pull-model
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Ollama..."
+              until curl -sf http://ollama:11434/api/tags >/dev/null; do
+                sleep 5
+              done
+
+              echo "Pulling llama3.2:1b..."
+              curl -sf http://ollama:11434/api/pull \
+                -H "Content-Type: application/json" \
+                -d '{"name":"llama3.2:1b"}'
+
+              echo "Model pull completed."

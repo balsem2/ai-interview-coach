@@ -1,0 +1,31 @@
+---
+- name: Install K3s Kubernetes
+  hosts: k3s_servers
+  become: true
+
+  tasks:
+    - name: Check if K3s is already installed
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    - name: Install K3s
+      shell: curl -sfL https://get.k3s.io | sh -
+      when: not k3s_binary.stat.exists
+
+    - name: Ensure K3s service is enabled and started
+      systemd:
+        name: k3s
+        enabled: true
+        state: started
+
+    - name: Wait for node to be ready
+      shell: kubectl get nodes
+      register: k3s_nodes
+      retries: 10
+      delay: 10
+      until: k3s_nodes.rc == 0
+
+    - name: Show Kubernetes nodes
+      debug:
+        var: k3s_nodes.stdout

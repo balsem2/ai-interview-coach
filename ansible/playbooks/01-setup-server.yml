@@ -1,0 +1,22 @@
+---
+- name: Prepare Ubuntu server for Kubernetes
+  hosts: k3s_servers
+  become: true
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: true
+
+    - name: Install base packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - nano
+          - net-tools
+          - ca-certificates
+          - gnupg
+          - lsb-release
+        state: present

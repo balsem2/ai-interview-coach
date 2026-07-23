@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: import-questions
+  namespace: ai-interview
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: import-questions
+          image: ghcr.io/balsem2/ai-interview-backend:latest
+          imagePullPolicy: Always
+          command:
+            - python
+            - scripts/import_questions.py
+          env:
+            - name: DATASET_PATH
+              value: /data/Mock_interview_questions.json
+          envFrom:
+            - secretRef:
+                name: backend-secret
+          volumeMounts:
+            - name: questions-dataset
+              mountPath: /data
+              readOnly: true
+      volumes:
+        - name: questions-dataset
+          hostPath:
+            path: /opt/ai-interview/database
+            type: Directory

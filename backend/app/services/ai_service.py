@@ -9,14 +9,15 @@ from dotenv import load_dotenv
 from app.models.question import Question
 
 DEFAULT_MODEL = "gpt-5.5"
-DEFAULT_OLLAMA_MODEL = "llama3.2:3b"
+DEFAULT_OLLAMA_MODEL = "llama3.2:1b"
+DEFAULT_OLLAMA_TIMEOUT = 300
 
 load_dotenv()
 
 
 def build_interview_prompt(question: Question | None, user_answer: str, history: list):
     question_text = question.question_text if question else "No question was provided."
-    expected_answer = question.expected_answer if question else "No expected answer was provided."
+    expected_answer = (question.expected_answer if question else "No expected answer was provided.")[:900]
     difficulty = question.difficulty if question else "unknown"
     field = question.field if question else "general"
 
@@ -32,8 +33,8 @@ Your job:
 - Reply like a helpful interviewer.
 - Evaluate the candidate's answer.
 - Use the expected answer as private guidance, not as text to copy.
-- Give concise feedback.
-- Ask one useful follow-up question.
+- Give concise feedback in 80 words maximum.
+- Ask at most one useful follow-up question.
 - If the candidate's answer is very short, ask them to expand using STAR: Situation, Task, Action, Result.
 
 Interview context:
@@ -59,6 +60,12 @@ def estimate_score(question: Question | None, user_answer: str):
     normalized_answer = answer.lower()
 
     weak_answers = {
+        "hi",
+        "hello",
+        "hey",
+        "test",
+        "ok",
+        "okay",
         "idk",
         "i don't know",
         "i dont know",
@@ -72,6 +79,9 @@ def estimate_score(question: Question | None, user_answer: str):
     }
 
     if normalized_answer in weak_answers:
+        return 0
+
+    if len(answer) < 15:
         return 0
 
     if len(answer) < 30:
@@ -95,6 +105,22 @@ def estimate_score(question: Question | None, user_answer: str):
     clarity_score = 20 if "." in answer or "," in answer else 10
 
     return max(0, min(100, 25 + overlap_score + structure_score + clarity_score))
+
+
+def build_short_answer_feedback(question: Question | None, user_answer: str, score: int):
+    question_text = question.question_text if question else "the question"
+
+    if score == 0:
+        return (
+            "This answer is too short to evaluate. I saved it with a score of 0. "
+            "For the next question, try to give at least one clear idea or example."
+        )
+
+    return (
+        f"Good start. Your answer addresses part of the question, but it needs more depth. "
+        f"To improve it, explain why your point matters for: {question_text} "
+        "Then add one concrete example and a short conclusion."
+    )
 
 
 def build_final_report_prompt(answers: list):
@@ -145,6 +171,7 @@ def generate_openai_reply(prompt: str):
 def generate_ollama_reply(prompt: str):
     ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
     ollama_model = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT", DEFAULT_OLLAMA_TIMEOUT))
 
     try:
         response = httpx.post(
@@ -154,16 +181,18 @@ def generate_ollama_reply(prompt: str):
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.4
+                    "temperature": 0.3,
+                    "num_predict": 90,
+                    "num_ctx": 1024
                 }
             },
-            timeout=120
+            timeout=ollama_timeout
         )
         response.raise_for_status()
     except httpx.ConnectError:
         raise HTTPException(
             status_code=503,
-            detail="Ollama is not running. Install Ollama, run `ollama pull llama3.2:3b`, then start Ollama."
+            detail="Ollama is not running. Install Ollama, run `ollama pull llama3.2:1b`, then start Ollama."
         )
     except httpx.HTTPStatusError as error:
         raise HTTPException(
