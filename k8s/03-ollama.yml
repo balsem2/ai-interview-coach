@@ -28,6 +28,7 @@ spec:
       containers:
         - name: ollama
           image: ollama/ollama:latest
+          imagePullPolicy: IfNotPresent
           env:
             - name: OLLAMA_KEEP_ALIVE
               value: "-1"
