@@ -54,11 +54,29 @@ Le projet est compose de 4 services principaux:
 - Sauvegarde des reponses et scores dans PostgreSQL.
 - Generation de rapport.
 - Export PDF.
+- Reponse par texte ou par dictee vocale.
+- Integration webcam dans la salle d'entretien.
+- Zone video et zone de reponse organisees pour simuler un vrai entretien.
 - Docker Compose pour lancer tous les services localement.
 - Images Docker frontend/backend poussees sur GitHub Container Registry.
 - Deploiement sur K3s avec manifests Kubernetes.
 - Automatisation avec Ansible.
 - Acces local via `http://ai-interview.local`.
+
+## Experience entretien
+
+L'application ne se limite pas a un simple formulaire de questions/reponses.  
+Elle fournit une interface proche d'un vrai entretien:
+
+- affichage de la webcam du candidat;
+- bouton micro pour dicter la reponse au lieu de l'ecrire;
+- bouton d'envoi de reponse;
+- suivi du temps d'entretien;
+- progression question par question;
+- feedback apres chaque reponse;
+- sauvegarde des reponses pour le rapport final.
+
+La partie analyse faciale est prevue pour mesurer des indicateurs comme l'attention, la confiance ou l'engagement a partir de la camera. Cette partie est dans le perimetre du projet et sera renforcee dans les prochaines etapes.
 
 ## Structure du projet
 
@@ -200,5 +218,6 @@ L'application fonctionne actuellement sur K3s avec:
 - Ajouter Prometheus et Grafana.
 - Ajouter alertes.
 - Ajouter scan de securite des images.
+- Renforcer l'analyse faciale avec de vrais indicateurs webcam.
+- Ameliorer l'analyse vocale et la transcription.
 - Ameliorer la documentation d'installation.
-
