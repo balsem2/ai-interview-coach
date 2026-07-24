@@ -10,7 +10,7 @@ from app.models.question import Question
 
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_OLLAMA_MODEL = "llama3.2:1b"
-DEFAULT_OLLAMA_TIMEOUT = 300
+DEFAULT_OLLAMA_TIMEOUT = 15
 
 load_dotenv()
 
@@ -123,6 +123,31 @@ def build_short_answer_feedback(question: Question | None, user_answer: str, sco
     )
 
 
+def build_local_interview_feedback(question: Question | None, user_answer: str, score: int):
+    question_text = question.question_text if question else "the interview question"
+
+    if score == 0 or len(user_answer.split()) < 25:
+        return build_short_answer_feedback(question, user_answer, score)
+
+    if score >= 80:
+        return (
+            "Strong answer. You gave a clear explanation and connected it to the question. "
+            "To make it even better, add one concrete example and finish with a short result or impact."
+        )
+
+    if score >= 55:
+        return (
+            "Good start. Your answer is relevant, but it needs more precision. "
+            f"Focus directly on this question: {question_text} "
+            "Then explain one example and the result in two or three sentences."
+        )
+
+    return (
+        "Your answer is understandable, but it is still too general. "
+        "Try to structure it with one clear idea, one example, and one conclusion."
+    )
+
+
 def build_final_report_prompt(answers: list):
     answer_blocks = "\n\n".join(
         f"Question: {item['question']}\nCandidate answer: {item['answer']}\nScore: {item['score']}\nFeedback: {item['feedback']}"
@@ -182,8 +207,8 @@ def generate_ollama_reply(prompt: str):
                 "stream": False,
                 "options": {
                     "temperature": 0.3,
-                    "num_predict": 90,
-                    "num_ctx": 1024
+                    "num_predict": 60,
+                    "num_ctx": 768
                 }
             },
             timeout=ollama_timeout

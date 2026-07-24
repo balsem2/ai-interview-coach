@@ -15,6 +15,7 @@ from app.schemas.chat_schema import (
     StartInterviewResponse,
 )
 from app.services.ai_service import (
+    build_local_interview_feedback,
     build_short_answer_feedback,
     estimate_score,
     generate_final_report,
@@ -92,11 +93,18 @@ def chat_message(
             score=score
         )
     else:
-        reply = generate_interview_reply(
-            question=question,
-            user_answer=payload.answer,
-            history=payload.history
-        )
+        try:
+            reply = generate_interview_reply(
+                question=question,
+                user_answer=payload.answer,
+                history=payload.history
+            )
+        except Exception:
+            reply = build_local_interview_feedback(
+                question=question,
+                user_answer=payload.answer,
+                score=score
+            )
     session = get_or_create_session(payload, current_user, db)
 
     if question:

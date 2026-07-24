@@ -7,7 +7,7 @@ data:
   AI_PROVIDER: ollama
   OLLAMA_URL: http://ollama:11434
   OLLAMA_MODEL: llama3.2:1b
-  OLLAMA_TIMEOUT: "300"
+  OLLAMA_TIMEOUT: "15"
   DATASET_PATH: /app/data/Mock_interview_questions.json
 ---
 apiVersion: apps/v1
