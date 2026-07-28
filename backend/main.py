@@ -40,3 +40,11 @@ app.include_router(chat_router)
 @app.get("/")
 def home():
     return {"message": "AI Interview Coach Backend Running"}
+
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "service": "backend"
+    }
