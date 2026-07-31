@@ -1,0 +1,90 @@
+---
+- name: Install monitoring stack on K3s
+  hosts: k3s_servers
+  become: true
+
+  vars:
+    monitoring_dir: /opt/ai-interview/monitoring
+    kubeconfig_path: /etc/rancher/k3s/k3s.yaml
+    grafana_dashboard_configmap: ai-interview-dashboard
+
+  tasks:
+    - name: Check if Helm is installed
+      command: helm version --short
+      register: helm_version
+      changed_when: false
+      failed_when: false
+
+    - name: Download Helm install script
+      get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: "0700"
+      when: helm_version.rc != 0
+
+    - name: Install Helm
+      command: /tmp/get_helm.sh
+      when: helm_version.rc != 0
+
+    - name: Create monitoring config directory on server
+      file:
+        path: "{{ monitoring_dir }}/dashboards"
+        state: directory
+        mode: "0755"
+
+    - name: Copy monitoring Helm values
+      copy:
+        src: ../../monitoring/values.yml
+        dest: "{{ monitoring_dir }}/values.yml"
+        mode: "0644"
+
+    - name: Copy Grafana dashboards
+      copy:
+        src: ../../monitoring/dashboards/
+        dest: "{{ monitoring_dir }}/dashboards/"
+        mode: "0644"
+
+    - name: Add prometheus-community Helm repository
+      command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+      register: helm_repo_add
+      changed_when: "'has been added' in helm_repo_add.stdout"
+      failed_when:
+        - helm_repo_add.rc != 0
+        - "'already exists' not in helm_repo_add.stderr"
+
+    - name: Update Helm repositories
+      command: helm repo update
+
+    - name: Install or update kube-prometheus-stack
+      command: >
+        helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
+        --namespace monitoring
+        --create-namespace
+        -f {{ monitoring_dir }}/values.yml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Create or update AI Interview Grafana dashboard ConfigMap
+      shell: >
+        kubectl -n monitoring create configmap {{ grafana_dashboard_configmap }}
+        --from-file=ai-interview-monitoring.json={{ monitoring_dir }}/dashboards/ai-interview-monitoring.json
+        --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Label dashboard ConfigMap for Grafana sidecar
+      command: >
+        kubectl -n monitoring label configmap {{ grafana_dashboard_configmap }}
+        grafana_dashboard=1 --overwrite
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Show monitoring pods
+      command: kubectl get pods -n monitoring
+      register: monitoring_pods
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Display monitoring pods
+      debug:
+        var: monitoring_pods.stdout_lines

@@ -62,6 +62,9 @@ Le projet est compose de 4 services principaux:
 - Deploiement sur K3s avec manifests Kubernetes.
 - Automatisation avec Ansible.
 - Acces local via `http://ai-interview.local`.
+- Health checks backend avec probes Kubernetes.
+- Supervision avec Prometheus et Grafana.
+- Dashboard Grafana `AI Interview Monitoring`.
 
 ## Experience entretien
 
@@ -87,6 +90,7 @@ ai-interview-coach/
   database/             Dataset public des questions
   k8s/                  Manifests Kubernetes
   ansible/              Inventory et playbooks Ansible
+  monitoring/           Configuration Prometheus/Grafana et dashboards
   docker-compose.yml    Lancement local avec Docker Compose
   DOCKER.md             Notes Docker
   setup-env.ps1         Creation automatique du fichier backend/.env
@@ -174,6 +178,51 @@ Puis ouvrir:
 http://ai-interview.local
 ```
 
+## Monitoring Prometheus/Grafana
+
+La supervision est decrite dans le dossier `monitoring/`:
+
+```text
+monitoring/
+  values.yml
+  dashboards/
+    ai-interview-monitoring.json
+```
+
+Installation ou mise a jour avec Ansible:
+
+```bash
+ansible-playbook -i ansible/inventory.ini ansible/playbooks/04-install-monitoring.yml
+```
+
+Ce playbook:
+
+- installe Helm si necessaire;
+- ajoute le repo Helm `prometheus-community`;
+- installe ou met a jour `kube-prometheus-stack`;
+- expose Grafana sur le NodePort `30300`;
+- charge automatiquement le dashboard `AI Interview Monitoring`.
+
+Ouvrir Grafana:
+
+```text
+http://192.168.56.101:30300
+```
+
+Recuperer le mot de passe admin:
+
+```bash
+ssh balsem@192.168.56.101
+sudo kubectl get secret -n monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+
+Le dashboard suit:
+
+- etat des pods du namespace `ai-interview`;
+- CPU par pod;
+- memoire par pod;
+- redemarrages des pods.
+
 ## Secrets et environnement
 
 Le fichier `backend/.env` ne doit pas etre pousse sur GitHub.
@@ -209,13 +258,11 @@ L'application fonctionne actuellement sur K3s avec:
 - ollama running
 - import questions completed
 - modele Ollama `llama3.2:1b` installe automatiquement par Job Kubernetes
+- monitoring Prometheus/Grafana installe
+- dashboard `AI Interview Monitoring` disponible
 
 ## Prochaines etapes
 
-- Ajouter pipeline CI/CD GitHub Actions.
-- Automatiser build/push des images.
-- Automatiser le deploiement K3s depuis le pipeline.
-- Ajouter Prometheus et Grafana.
 - Ajouter alertes.
 - Ajouter scan de securite des images.
 - Renforcer l'analyse faciale avec de vrais indicateurs webcam.
