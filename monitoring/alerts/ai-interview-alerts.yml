@@ -1,0 +1,81 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-interview-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+    app.kubernetes.io/name: ai-interview
+    app.kubernetes.io/component: alerts
+spec:
+  groups:
+    - name: ai-interview.availability
+      rules:
+        - alert: AIInterviewBackendDown
+          expr: sum(kube_pod_status_phase{namespace="ai-interview", pod=~"backend-.*", phase="Running"}) < 1
+          for: 2m
+          labels:
+            severity: critical
+            service: backend
+          annotations:
+            summary: "AI Interview backend is down"
+            description: "No backend pod is running in the ai-interview namespace for more than 2 minutes."
+
+        - alert: AIInterviewFrontendDown
+          expr: sum(kube_pod_status_phase{namespace="ai-interview", pod=~"frontend-.*", phase="Running"}) < 1
+          for: 2m
+          labels:
+            severity: critical
+            service: frontend
+          annotations:
+            summary: "AI Interview frontend is down"
+            description: "No frontend pod is running in the ai-interview namespace for more than 2 minutes."
+
+        - alert: AIInterviewPostgresDown
+          expr: sum(kube_pod_status_phase{namespace="ai-interview", pod=~"postgres-.*", phase="Running"}) < 1
+          for: 2m
+          labels:
+            severity: critical
+            service: postgres
+          annotations:
+            summary: "AI Interview PostgreSQL is down"
+            description: "No PostgreSQL pod is running in the ai-interview namespace for more than 2 minutes."
+
+        - alert: AIInterviewOllamaDown
+          expr: sum(kube_pod_status_phase{namespace="ai-interview", pod=~"ollama-.*", phase="Running"}) < 1
+          for: 3m
+          labels:
+            severity: critical
+            service: ollama
+          annotations:
+            summary: "AI Interview Ollama is down"
+            description: "No Ollama pod is running in the ai-interview namespace for more than 3 minutes."
+
+    - name: ai-interview.health
+      rules:
+        - alert: AIInterviewPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="ai-interview"}[10m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "AI Interview pod restarted"
+            description: "Pod {{ $labels.pod }} restarted during the last 10 minutes."
+
+        - alert: AIInterviewPodHighCPU
+          expr: sum(rate(container_cpu_usage_seconds_total{namespace="ai-interview", container!="", image!=""}[5m])) by (pod) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU usage on AI Interview pod"
+            description: "Pod {{ $labels.pod }} is using more than 0.5 CPU cores for 5 minutes."
+
+        - alert: AIInterviewPodHighMemory
+          expr: sum(container_memory_working_set_bytes{namespace="ai-interview", container!="", image!=""}) by (pod) > 400 * 1024 * 1024
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High memory usage on AI Interview pod"
+            description: "Pod {{ $labels.pod }} is using more than 400 MiB of memory for 5 minutes."

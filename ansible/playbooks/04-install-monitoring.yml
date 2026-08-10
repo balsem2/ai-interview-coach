@@ -32,6 +32,12 @@
         state: directory
         mode: "0755"
 
+    - name: Create monitoring alerts directory on server
+      file:
+        path: "{{ monitoring_dir }}/alerts"
+        state: directory
+        mode: "0755"
+
     - name: Copy monitoring Helm values
       copy:
         src: ../../monitoring/values.yml
@@ -42,6 +48,12 @@
       copy:
         src: ../../monitoring/dashboards/
         dest: "{{ monitoring_dir }}/dashboards/"
+        mode: "0644"
+
+    - name: Copy Prometheus alert rules
+      copy:
+        src: ../../monitoring/alerts/
+        dest: "{{ monitoring_dir }}/alerts/"
         mode: "0644"
 
     - name: Add prometheus-community Helm repository
@@ -78,6 +90,21 @@
         grafana_dashboard=1 --overwrite
       environment:
         KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Apply AI Interview Prometheus alert rules
+      command: kubectl apply -f {{ monitoring_dir }}/alerts/
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Show Prometheus alert rules
+      command: kubectl get prometheusrule -n monitoring ai-interview-alerts
+      register: prometheus_rules
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Display Prometheus alert rules
+      debug:
+        var: prometheus_rules.stdout_lines
 
     - name: Show monitoring pods
       command: kubectl get pods -n monitoring

@@ -8,6 +8,20 @@ spec:
     - host: ai-interview.local
       http:
         paths:
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8001
+          - path: /backend
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8001
           - path: /
             pathType: Prefix
             backend:

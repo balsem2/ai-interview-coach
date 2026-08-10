@@ -65,6 +65,7 @@ Le projet est compose de 4 services principaux:
 - Health checks backend avec probes Kubernetes.
 - Supervision avec Prometheus et Grafana.
 - Dashboard Grafana `AI Interview Monitoring`.
+- Alertes Prometheus pour detecter les pannes et redemarrages des pods.
 
 ## Experience entretien
 
@@ -187,6 +188,8 @@ monitoring/
   values.yml
   dashboards/
     ai-interview-monitoring.json
+  alerts/
+    ai-interview-alerts.yml
 ```
 
 Installation ou mise a jour avec Ansible:
@@ -201,7 +204,8 @@ Ce playbook:
 - ajoute le repo Helm `prometheus-community`;
 - installe ou met a jour `kube-prometheus-stack`;
 - expose Grafana sur le NodePort `30300`;
-- charge automatiquement le dashboard `AI Interview Monitoring`.
+- charge automatiquement le dashboard `AI Interview Monitoring`;
+- applique les regles d'alertes Prometheus.
 
 Ouvrir Grafana:
 
@@ -222,6 +226,22 @@ Le dashboard suit:
 - CPU par pod;
 - memoire par pod;
 - redemarrages des pods.
+
+Les alertes Prometheus suivent:
+
+- backend indisponible;
+- frontend indisponible;
+- PostgreSQL indisponible;
+- Ollama indisponible;
+- redemarrage d'un pod;
+- CPU eleve par pod;
+- memoire elevee par pod.
+
+Verifier les alertes installees:
+
+```bash
+ansible k3s_servers -i ansible/inventory.ini -m shell -a "kubectl get prometheusrule -n monitoring ai-interview-alerts" --become
+```
 
 ## Secrets et environnement
 
@@ -260,10 +280,11 @@ L'application fonctionne actuellement sur K3s avec:
 - modele Ollama `llama3.2:1b` installe automatiquement par Job Kubernetes
 - monitoring Prometheus/Grafana installe
 - dashboard `AI Interview Monitoring` disponible
+- alertes Prometheus `ai-interview-alerts` installees
 
 ## Prochaines etapes
 
-- Ajouter alertes.
+- Ajouter notifications Alertmanager vers email, Slack ou Teams.
 - Ajouter scan de securite des images.
 - Renforcer l'analyse faciale avec de vrais indicateurs webcam.
 - Ameliorer l'analyse vocale et la transcription.
