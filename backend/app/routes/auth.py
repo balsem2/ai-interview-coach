@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models.user import User
-from app.schemas.user_schema import UserCreate, UserResponse, UserLogin
+from app.schemas.user_schema import RefreshTokenRequest, UserCreate, UserResponse, UserLogin
 from app.services.auth_service import hash_password, verify_password
-from app.services.jwt_service import ALGORITHM, SECRET_KEY, create_access_token
+from app.services.jwt_service import ALGORITHM, SECRET_KEY, create_access_token, create_refresh_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 security = HTTPBearer()
@@ -30,10 +30,11 @@ def get_current_user(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("user_id")
+        token_type = payload.get("token_type")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    if user_id is None:
+    if user_id is None or token_type != "access":
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = db.query(User).filter(User.id == user_id).first()
@@ -74,15 +75,13 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     if not verify_password(user_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_access_token(
-        {
-            "user_id": user.id,
-            "email": user.email
-        }
-    )
+    token_data = {"user_id": user.id, "email": user.email}
+    token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
 
     return {
         "access_token": token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": {
             "id": user.id,
@@ -90,6 +89,26 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
             "email": user.email
         }
     }
+
+
+@router.post("/refresh")
+def refresh_access_token(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
+    try:
+        token_data = jwt.decode(payload.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = token_data.get("user_id")
+        token_type = token_data.get("token_type")
+    except JWTError as error:
+        raise HTTPException(status_code=401, detail="Invalid refresh token") from error
+
+    if not user_id or token_type != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    access_token = create_access_token({"user_id": user.id, "email": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.get("/me", response_model=UserResponse)

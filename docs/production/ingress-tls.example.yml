@@ -1,0 +1,26 @@
+# Copy this file outside the automatically applied k8s directory, replace the
+# example domain, and apply it only after cert-manager is installed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-interview-public
+  namespace: ai-interview
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - interview.example.com
+      secretName: ai-interview-tls
+  rules:
+    - host: interview.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

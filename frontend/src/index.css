@@ -1317,6 +1317,24 @@ button:disabled {
   background: #efedff;
 }
 
+.history-row {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+.history-row > strong {
+  min-width: 56px;
+  text-align: right;
+}
+
+.history-row > button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #625cf0;
+}
+
 .practice-cta {
   display: flex;
   flex-direction: column;
@@ -1582,6 +1600,11 @@ button:disabled {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .history-row {
+    grid-template-columns: auto 1fr;
+    padding: 12px;
   }
 
   .feedback-grid {

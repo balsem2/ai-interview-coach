@@ -36,7 +36,7 @@ http://localhost:8001
 PostgreSQL from the host machine:
 
 ```text
-localhost:5433
+localhost:5434
 ```
 
 Inside Docker, the backend connects to PostgreSQL with:
@@ -92,3 +92,26 @@ The backend container reads it from:
 ```
 
 This path is configured in `docker-compose.yml` with `DATASET_PATH`.
+
+## Database migrations
+
+The backend image runs this command automatically before FastAPI starts:
+
+```text
+alembic upgrade head
+```
+
+To verify or run migrations manually:
+
+```powershell
+docker compose exec backend alembic current
+docker compose exec backend alembic upgrade head
+```
+
+## Metrics
+
+Prometheus-compatible application metrics are exposed through the frontend proxy at:
+
+```text
+http://localhost:3000/api/metrics
+```

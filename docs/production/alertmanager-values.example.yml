@@ -1,0 +1,20 @@
+# Merge this example into monitoring/values.yml only after storing the real
+# SMTP credentials in a Kubernetes Secret or another secret manager.
+alertmanager:
+  enabled: true
+  config:
+    global:
+      smtp_smarthost: smtp.example.com:587
+      smtp_from: alerts@example.com
+      smtp_auth_username: alerts@example.com
+      smtp_auth_password: REPLACE_FROM_SECRET_MANAGER
+    route:
+      receiver: internship-team-email
+      group_by:
+        - alertname
+        - namespace
+    receivers:
+      - name: internship-team-email
+        email_configs:
+          - to: team@example.com
+            send_resolved: true

@@ -110,6 +110,7 @@ function AppShell({ active, onNavigate, children }) {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "home" },
     { id: "interview", label: "Interview Room", icon: "video" },
+    { id: "history", label: "History", icon: "clock" },
     { id: "report", label: "Reports", icon: "file" },
     { id: "analytics", label: "Analytics", icon: "chart" }
   ];
@@ -142,10 +143,6 @@ function AppShell({ active, onNavigate, children }) {
         </nav>
 
         <div className="side-footer">
-          <button className="nav-item" type="button">
-            <Icon name="settings" />
-            <span>Settings</span>
-          </button>
           <button className="nav-item" type="button" onClick={() => onNavigate("logout")}>
             <Icon name="logout" />
             <span>Logout</span>

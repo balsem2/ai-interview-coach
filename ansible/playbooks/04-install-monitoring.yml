@@ -56,6 +56,12 @@
         dest: "{{ monitoring_dir }}/alerts/"
         mode: "0644"
 
+    - name: Copy application ServiceMonitor
+      copy:
+        src: ../../monitoring/servicemonitor.yml
+        dest: "{{ monitoring_dir }}/servicemonitor.yml"
+        mode: "0644"
+
     - name: Add prometheus-community Helm repository
       command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
       register: helm_repo_add
@@ -93,6 +99,11 @@
 
     - name: Apply AI Interview Prometheus alert rules
       command: kubectl apply -f {{ monitoring_dir }}/alerts/
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Apply AI Interview backend ServiceMonitor
+      command: kubectl apply -f {{ monitoring_dir }}/servicemonitor.yml
       environment:
         KUBECONFIG: "{{ kubeconfig_path }}"
 

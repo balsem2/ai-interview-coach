@@ -4,6 +4,7 @@ metadata:
   name: backend-config
   namespace: ai-interview
 data:
+  APP_ENV: production
   AI_PROVIDER: ollama
   OLLAMA_URL: http://ollama:11434
   OLLAMA_MODEL: llama3.2:1b
@@ -15,6 +16,8 @@ kind: Deployment
 metadata:
   name: backend
   namespace: ai-interview
+  labels:
+    app: backend
 spec:
   replicas: 1
   selector:
@@ -58,9 +61,12 @@ kind: Service
 metadata:
   name: backend
   namespace: ai-interview
+  labels:
+    app: backend
 spec:
   selector:
     app: backend
   ports:
-    - port: 8001
+    - name: http
+      port: 8001
       targetPort: 8001

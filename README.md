@@ -45,20 +45,28 @@ Le projet est compose de 4 services principaux:
 - Creation de compte avec sauvegarde dans PostgreSQL.
 - Login/logout.
 - Protection du dashboard par token.
+- Renouvellement automatique du JWT avec refresh token.
 - Import du dataset de questions dans PostgreSQL.
 - Selection du domaine, difficulte et duree d'entretien.
-- Questions aleatoires depuis la base de donnees.
+- Questions aleatoires sans repetition pendant une meme session.
 - Chat avec feedback IA via Ollama.
 - Fallback local si Ollama est trop lent, pour eviter `Request failed`.
 - Score automatique apres chaque reponse.
 - Sauvegarde des reponses et scores dans PostgreSQL.
-- Generation de rapport.
+- Enregistrement des questions ignorees avec le statut `skipped`.
+- Historique des entretiens avec ouverture du rapport de chaque session.
+- Generation et mise en cache du rapport final.
+- Rapport isole par session d'entretien avec detail question par question.
 - Export PDF.
 - Reponse par texte ou par dictee vocale.
+- Dictee vocale en anglais, francais ou arabe.
 - Integration webcam dans la salle d'entretien.
+- Sauvegarde des moyennes de contact visuel, confiance et engagement par session.
+- Dashboard et page Analytics alimentes par les donnees PostgreSQL reelles.
 - Zone video et zone de reponse organisees pour simuler un vrai entretien.
 - Docker Compose pour lancer tous les services localement.
 - Images Docker frontend/backend poussees sur GitHub Container Registry.
+- Verification automatique du backend, lint et build frontend avant publication des images.
 - Deploiement sur K3s avec manifests Kubernetes.
 - Automatisation avec Ansible.
 - Acces local via `http://ai-interview.local`.
@@ -66,6 +74,10 @@ Le projet est compose de 4 services principaux:
 - Supervision avec Prometheus et Grafana.
 - Dashboard Grafana `AI Interview Monitoring`.
 - Alertes Prometheus pour detecter les pannes et redemarrages des pods.
+- Metriques applicatives FastAPI et temps de generation IA sur `/metrics`.
+- Migrations de base de donnees avec Alembic.
+- Sauvegarde PostgreSQL quotidienne par CronJob Kubernetes.
+- Scan Trivy, tags Docker par commit et rollback automatique dans la CI/CD.
 
 ## Experience entretien
 
@@ -80,7 +92,7 @@ Elle fournit une interface proche d'un vrai entretien:
 - feedback apres chaque reponse;
 - sauvegarde des reponses pour le rapport final.
 
-La partie analyse faciale est prevue pour mesurer des indicateurs comme l'attention, la confiance ou l'engagement a partir de la camera. Cette partie est dans le perimetre du projet et sera renforcee dans les prochaines etapes.
+L'analyse faciale MediaPipe s'execute localement dans le navigateur. Elle mesure le contact visuel, la confiance et l'engagement sans envoyer la video au backend; seules les moyennes numeriques de la session sont sauvegardees.
 
 ## Structure du projet
 
@@ -92,6 +104,7 @@ ai-interview-coach/
   k8s/                  Manifests Kubernetes
   ansible/              Inventory et playbooks Ansible
   monitoring/           Configuration Prometheus/Grafana et dashboards
+  backend/alembic/      Migrations versionnees de PostgreSQL
   docker-compose.yml    Lancement local avec Docker Compose
   DOCKER.md             Notes Docker
   setup-env.ps1         Creation automatique du fichier backend/.env
@@ -120,6 +133,16 @@ Depuis la racine du projet:
 ```powershell
 .\setup-env.ps1
 docker compose up --build
+```
+
+Le conteneur backend execute automatiquement `alembic upgrade head` avant de lancer FastAPI.
+
+Pour un lancement du backend sans Docker:
+
+```powershell
+cd backend
+.\venv\Scripts\alembic.exe upgrade head
+.\venv\Scripts\python.exe -m uvicorn main:app --port 8001
 ```
 
 Puis ouvrir:
@@ -153,6 +176,7 @@ Les fichiers Kubernetes sont dans `k8s/`:
 05-ollama-model-job.yml
 06-import-questions-job.yml
 07-ingress.yml
+08-postgres-backup.yml
 ```
 
 Deploiement avec Ansible:
@@ -226,6 +250,8 @@ Le dashboard suit:
 - CPU par pod;
 - memoire par pod;
 - redemarrages des pods.
+- volume et duree des requetes backend;
+- duree et erreurs de generation Ollama/OpenAI.
 
 Les alertes Prometheus suivent:
 
@@ -236,6 +262,25 @@ Les alertes Prometheus suivent:
 - redemarrage d'un pod;
 - CPU eleve par pod;
 - memoire elevee par pod.
+- taux eleve d'erreurs HTTP;
+- echecs repetes de generation IA.
+
+## Sauvegarde PostgreSQL
+
+Le manifeste `k8s/08-postgres-backup.yml` cree un CronJob qui execute `pg_dump` chaque jour a 02:00. Les sauvegardes compressees sont conservees sept jours dans le PVC `postgres-backups-pvc`.
+
+Verifier les executions de sauvegarde:
+
+```bash
+kubectl get cronjob postgres-backup -n ai-interview
+kubectl get jobs -n ai-interview | grep postgres-backup
+```
+
+La restauration doit etre testee dans un environnement hors production avant de remplacer la base active.
+
+## Securite CI/CD
+
+Avant publication, GitHub Actions execute les tests backend, ESLint, le build frontend et un scan Trivy des deux images. Les images valides recoivent `latest` et le SHA du commit. Le deploiement utilise le SHA immutable, attend la fin du rollout et restaure la revision precedente en cas d'echec.
 
 Verifier les alertes installees:
 
@@ -258,6 +303,10 @@ Les secrets Kubernetes sont crees par Ansible avec:
 ```bash
 ansible/playbooks/02-create-secrets.yml
 ```
+
+Des exemples non appliques automatiquement sont disponibles dans `docs/production/` pour activer TLS avec cert-manager et les notifications Alertmanager. Il faut remplacer le domaine et injecter les credentials depuis un gestionnaire de secrets avant de les utiliser.
+
+Les URLs MediaPipe peuvent aussi etre remplacees au build du frontend avec `VITE_MEDIAPIPE_WASM_URL` et `VITE_MEDIAPIPE_MODEL_URL` afin d'heberger le modele localement au lieu d'utiliser les CDN publics.
 
 ## Images Docker
 
@@ -284,8 +333,9 @@ L'application fonctionne actuellement sur K3s avec:
 
 ## Prochaines etapes
 
-- Ajouter notifications Alertmanager vers email, Slack ou Teams.
-- Ajouter scan de securite des images.
+- Configurer les notifications Alertmanager vers email, Slack ou Teams avec les credentials de production.
+- Configurer un domaine public, TLS et cert-manager.
+- Externaliser les sauvegardes vers un stockage objet hors cluster.
 - Renforcer l'analyse faciale avec de vrais indicateurs webcam.
-- Ameliorer l'analyse vocale et la transcription.
+- Ajouter une transcription serveur pour les navigateurs sans Web Speech API.
 - Ameliorer la documentation d'installation.

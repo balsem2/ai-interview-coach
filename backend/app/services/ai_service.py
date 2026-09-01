@@ -1,5 +1,6 @@
 import os
 import re
+import time
 
 import httpx
 from fastapi import HTTPException
@@ -7,6 +8,7 @@ from openai import OpenAI, OpenAIError
 from dotenv import load_dotenv
 
 from app.models.question import Question
+from app.metrics import AI_GENERATION_DURATION, AI_GENERATION_ERRORS
 
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_OLLAMA_MODEL = "llama3.2:1b"
@@ -168,6 +170,25 @@ Interview answers:
 """.strip()
 
 
+def build_local_final_report(answers: list):
+    scores = [item.get("score") or 0 for item in answers]
+    average = sum(scores) / len(scores) if scores else 0
+
+    if average >= 80:
+        performance = "Overall performance was strong, with relevant and well-structured answers."
+    elif average >= 55:
+        performance = "Overall performance was satisfactory, but several answers need more precision and depth."
+    else:
+        performance = "Overall performance needs improvement, especially in answer structure and supporting examples."
+
+    return (
+        f"{performance} The average score was {average:.1f}/100. "
+        "Strengths: the candidate attempted the interview questions and communicated clear ideas. "
+        "Areas to improve: answer more directly, use concrete examples, and explain the result of each action. "
+        "Recommendations: structure answers with STAR, review the target domain, and practise concise timed responses."
+    )
+
+
 def generate_openai_reply(prompt: str):
     api_key = os.getenv("OPENAI_API_KEY")
 
@@ -179,16 +200,21 @@ def generate_openai_reply(prompt: str):
 
     client = OpenAI()
 
+    started_at = time.perf_counter()
     try:
         response = client.responses.create(
             model=os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
             input=prompt
         )
     except OpenAIError as error:
+        AI_GENERATION_ERRORS.labels("openai").inc()
         raise HTTPException(
             status_code=503,
             detail=f"OpenAI API error: {error}"
         )
+
+    finally:
+        AI_GENERATION_DURATION.labels("openai").observe(time.perf_counter() - started_at)
 
     return response.output_text
 
@@ -198,6 +224,7 @@ def generate_ollama_reply(prompt: str):
     ollama_model = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT", DEFAULT_OLLAMA_TIMEOUT))
 
+    started_at = time.perf_counter()
     try:
         response = httpx.post(
             f"{ollama_url}/api/generate",
@@ -215,20 +242,26 @@ def generate_ollama_reply(prompt: str):
         )
         response.raise_for_status()
     except httpx.ConnectError:
+        AI_GENERATION_ERRORS.labels("ollama").inc()
         raise HTTPException(
             status_code=503,
             detail="Ollama is not running. Install Ollama, run `ollama pull llama3.2:1b`, then start Ollama."
         )
     except httpx.HTTPStatusError as error:
+        AI_GENERATION_ERRORS.labels("ollama").inc()
         raise HTTPException(
             status_code=503,
             detail=f"Ollama API error: {error.response.text}"
         )
     except httpx.HTTPError as error:
+        AI_GENERATION_ERRORS.labels("ollama").inc()
         raise HTTPException(
             status_code=503,
             detail=f"Ollama connection error: {error}"
         )
+
+    finally:
+        AI_GENERATION_DURATION.labels("ollama").observe(time.perf_counter() - started_at)
 
     return response.json().get("response", "I could not generate a response.")
 

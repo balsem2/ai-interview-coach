@@ -33,7 +33,6 @@ function Login({ onNavigate, onAuthSuccess }) {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,6 +51,7 @@ function Login({ onNavigate, onAuthSuccess }) {
 
       if (result.access_token) {
         localStorage.setItem("token", result.access_token);
+        localStorage.setItem("refreshToken", result.refresh_token);
         onAuthSuccess(result.user);
 
       } else {
@@ -102,21 +102,6 @@ function Login({ onNavigate, onAuthSuccess }) {
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
-
-          <div className="auth-options">
-            <label className="remember-option">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-              />
-              <span>Remember me</span>
-            </label>
-
-            <button className="auth-link" type="button">
-              Forgot password?
-            </button>
-          </div>
 
           <button className="auth-submit" type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Signing in..." : "Sign In"}

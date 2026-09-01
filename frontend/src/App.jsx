@@ -1,108 +1,80 @@
-import { useEffect, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react";
 
-import Login from "./pages/Login"
-import Register from "./pages/Register"
-import Dashboard from "./pages/Dashboard"
-import InterviewRoom from "./pages/InterviewRoom"
-import Report from "./pages/Report"
-import Analytics from "./pages/Analytics"
-import { getCurrentUser } from "./services/api"
+import { getCurrentUser } from "./services/api";
 
-const protectedPages = ["dashboard", "interview", "report", "analytics"]
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const InterviewRoom = lazy(() => import("./pages/InterviewRoom"));
+const Report = lazy(() => import("./pages/Report"));
+const Analytics = lazy(() => import("./pages/Analytics"));
+const History = lazy(() => import("./pages/History"));
+
+const protectedPages = ["dashboard", "interview", "history", "report", "analytics"];
 
 function App() {
-
-  const [page, setPage] = useState(() => localStorage.getItem("token") ? "dashboard" : "login")
+  const [page, setPage] = useState(() => localStorage.getItem("token") ? "dashboard" : "login");
   const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem("user")
-    return savedUser ? JSON.parse(savedUser) : null
-  })
+    const savedUser = localStorage.getItem("user");
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-
-    if (!token) {
-      return
-    }
-
+    if (!localStorage.getItem("token")) return;
     getCurrentUser()
       .then((currentUser) => {
-        setUser(currentUser)
-        localStorage.setItem("user", JSON.stringify(currentUser))
+        setUser(currentUser);
+        localStorage.setItem("user", JSON.stringify(currentUser));
       })
       .catch(() => {
-        localStorage.removeItem("token")
-        localStorage.removeItem("user")
-        setUser(null)
-        setPage("login")
-      })
-  }, [])
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+        setUser(null);
+        setPage("login");
+      });
+  }, []);
 
   useEffect(() => {
-    const handleAuthExpired = () => {
-      setUser(null)
-      setPage("login")
-    }
-
-    window.addEventListener("auth-expired", handleAuthExpired)
-
-    return () => {
-      window.removeEventListener("auth-expired", handleAuthExpired)
-    }
-  }, [])
+    const handleAuthExpired = () => { setUser(null); setPage("login"); };
+    window.addEventListener("auth-expired", handleAuthExpired);
+    return () => window.removeEventListener("auth-expired", handleAuthExpired);
+  }, []);
 
   const onNavigate = (newPage) => {
     if (newPage === "logout") {
-      localStorage.removeItem("token")
-      localStorage.removeItem("user")
-      setUser(null)
-      setPage("login")
-      return
+      localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("user");
+      setUser(null);
+      setPage("login");
+      return;
     }
-
     if (protectedPages.includes(newPage) && !localStorage.getItem("token")) {
-      setPage("login")
-      return
+      setPage("login");
+      return;
     }
-
-    setPage(newPage)
-  }
+    setPage(newPage);
+  };
 
   const handleAuthSuccess = (authUser) => {
-    setUser(authUser)
-    localStorage.setItem("user", JSON.stringify(authUser))
-    setPage("dashboard")
-  }
+    setUser(authUser);
+    localStorage.setItem("user", JSON.stringify(authUser));
+    setPage("dashboard");
+  };
 
-  if (protectedPages.includes(page) && !localStorage.getItem("token")) {
-    return <Login onNavigate={onNavigate} onAuthSuccess={handleAuthSuccess} />
-  }
+  let content;
+  if (protectedPages.includes(page) && !localStorage.getItem("token")) content = <Login onNavigate={onNavigate} onAuthSuccess={handleAuthSuccess} />;
+  else if (page === "login") content = <Login onNavigate={onNavigate} onAuthSuccess={handleAuthSuccess} />;
+  else if (page === "register") content = <Register onNavigate={onNavigate} />;
+  else if (page === "dashboard") content = <Dashboard onNavigate={onNavigate} user={user} />;
+  else if (page === "interview") content = <InterviewRoom onNavigate={onNavigate} user={user} />;
+  else if (page === "history") content = <History onNavigate={onNavigate} user={user} />;
+  else if (page === "report") content = <Report onNavigate={onNavigate} user={user} />;
+  else if (page === "analytics") content = <Analytics onNavigate={onNavigate} user={user} />;
+  else content = <Login onNavigate={onNavigate} onAuthSuccess={handleAuthSuccess} />;
 
-  if (page === "login") {
-    return <Login onNavigate={onNavigate} onAuthSuccess={handleAuthSuccess} />
-  }
-
-  if (page === "register") {
-    return <Register onNavigate={onNavigate} onAuthSuccess={handleAuthSuccess} />
-  }
-
-  if (page === "dashboard") {
-    return <Dashboard onNavigate={onNavigate} user={user} />
-  }
-
-  if (page === "interview") {
-    return <InterviewRoom onNavigate={onNavigate} user={user} />
-  }
-
-  if (page === "report") {
-    return <Report onNavigate={onNavigate} user={user} />
-  }
-
-  if (page === "analytics") {
-    return <Analytics onNavigate={onNavigate} user={user} />
-  }
-
-  return <Login onNavigate={onNavigate} />
+  return <Suspense fallback={<div className="page-header"><p>Loading...</p></div>}>{content}</Suspense>;
 }
 
-export default App
+export default App;

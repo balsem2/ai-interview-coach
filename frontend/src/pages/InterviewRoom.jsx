@@ -2,7 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 import { AppShell, Icon } from "../components/AppShell";
-import { getQuestionFields, getRandomQuestion, sendChatMessage, startInterviewSession } from "../services/api";
+import {
+  completeInterviewSession,
+  getQuestionFields,
+  getRandomQuestion,
+  sendChatMessage,
+  skipInterviewQuestion,
+  startInterviewSession
+} from "../services/api";
 
 function AnalysisRow({ icon, label, value, width }) {
   return (
@@ -41,6 +48,11 @@ const questionCountByDuration = {
   60: 20
 };
 
+const mediapipeWasmUrl = import.meta.env.VITE_MEDIAPIPE_WASM_URL
+  || "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+const mediapipeModelUrl = import.meta.env.VITE_MEDIAPIPE_MODEL_URL
+  || "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
+
 function InterviewRoom({ onNavigate }) {
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
@@ -50,6 +62,8 @@ function InterviewRoom({ onNavigate }) {
   const autoAdvanceRef = useRef(false);
   const faceLandmarkerRef = useRef(null);
   const faceLandmarkerPromiseRef = useRef(null);
+  const faceMetricTotalsRef = useRef({ eyeContact: 0, confidence: 0, engagement: 0, count: 0 });
+  const seenQuestionIdsRef = useRef(new Set());
   const [question, setQuestion] = useState(null);
   const [questionError, setQuestionError] = useState("");
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(true);
@@ -62,8 +76,10 @@ function InterviewRoom({ onNavigate }) {
   const [selectedField, setSelectedField] = useState("");
   const [selectedDifficulty, setSelectedDifficulty] = useState("");
   const [selectedDuration, setSelectedDuration] = useState(15);
+  const [speechLanguage, setSpeechLanguage] = useState("en-US");
   const [interviewSessionId, setInterviewSessionId] = useState(null);
   const [isInterviewStarted, setIsInterviewStarted] = useState(false);
+  const [isStartingInterview, setIsStartingInterview] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [faceStatus, setFaceStatus] = useState("Camera off");
@@ -88,6 +104,7 @@ function InterviewRoom({ onNavigate }) {
 
     getRandomQuestion(filters)
       .then((data) => {
+        if (data.id) seenQuestionIdsRef.current.add(data.id);
         setQuestion(data);
         setQuestionError("");
         setMessages([
@@ -119,12 +136,11 @@ function InterviewRoom({ onNavigate }) {
 
     if (!faceLandmarkerPromiseRef.current) {
       faceLandmarkerPromiseRef.current = FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        mediapipeWasmUrl
       )
         .then((vision) => FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+            modelAssetPath: mediapipeModelUrl,
             delegate: "GPU"
           },
           runningMode: "VIDEO",
@@ -153,8 +169,7 @@ function InterviewRoom({ onNavigate }) {
     };
   }, []);
 
-  const currentQuestion = question?.question_text || question?.question || "Can you tell me about a challenging project you worked on and how you overcame obstacles?";
-  const interviewTitle = question?.field ? `${question.field} Interview` : "Software Engineer Interview";
+  const interviewTitle = question?.field ? `${question.field} Interview` : "General Interview";
   const difficulty = question?.difficulty || question?.tier;
   const totalQuestions = questionCountByDuration[selectedDuration] || 5;
   const totalInterviewSeconds = selectedDuration * 60;
@@ -165,12 +180,42 @@ function InterviewRoom({ onNavigate }) {
   const formattedRemainingTime = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
   const formattedQuestionTime = `${String(Math.floor(questionRemainingSeconds / 60)).padStart(2, "0")}:${String(questionRemainingSeconds % 60).padStart(2, "0")}`;
 
+  const finishInterview = useCallback(async () => {
+    if (interviewSessionId) {
+      autoAdvanceRef.current = true;
+      if (!hasAnsweredCurrentQuestion && question?.id) {
+        try {
+          await skipInterviewQuestion(interviewSessionId, question.id);
+        } catch (error) {
+          console.error("Unable to save final skipped question", error);
+        }
+      }
+
+      const totals = faceMetricTotalsRef.current;
+      const divisor = totals.count || 1;
+
+      try {
+        await completeInterviewSession(interviewSessionId, {
+          eye_contact: totals.count ? Math.round(totals.eyeContact / divisor) : null,
+          confidence: totals.count ? Math.round(totals.confidence / divisor) : null,
+          engagement: totals.count ? Math.round(totals.engagement / divisor) : null
+        });
+      } catch (error) {
+        console.error("Unable to complete interview session", error);
+      }
+
+      localStorage.setItem("reportSessionId", String(interviewSessionId));
+    }
+
+    onNavigate("report");
+  }, [hasAnsweredCurrentQuestion, interviewSessionId, onNavigate, question?.id]);
+
   const handleSendResponse = async (e) => {
     e.preventDefault();
 
     const trimmedResponse = responseText.trim();
 
-    if (!trimmedResponse) {
+    if (!trimmedResponse || hasAnsweredCurrentQuestion || isSendingResponse) {
       return;
     }
 
@@ -190,7 +235,8 @@ function InterviewRoom({ onNavigate }) {
       if (!activeSessionId) {
         const session = await startInterviewSession({
           field: selectedField || question?.field,
-          difficulty: selectedDifficulty || difficulty
+          difficulty: selectedDifficulty || difficulty,
+          duration_minutes: selectedDuration
         });
         activeSessionId = session.interview_session_id;
         setInterviewSessionId(activeSessionId);
@@ -230,7 +276,7 @@ function InterviewRoom({ onNavigate }) {
     }
   };
 
-  const goToNextQuestion = useCallback(({ allowSkip = false } = {}) => {
+  const goToNextQuestion = useCallback(async ({ allowSkip = false } = {}) => {
     if (!allowSkip && !hasAnsweredCurrentQuestion) {
       setMessages((currentMessages) => [
         ...currentMessages,
@@ -244,6 +290,13 @@ function InterviewRoom({ onNavigate }) {
     }
 
     if (allowSkip && !hasAnsweredCurrentQuestion) {
+      if (interviewSessionId && question?.id) {
+        try {
+          await skipInterviewQuestion(interviewSessionId, question.id);
+        } catch (error) {
+          console.error("Unable to save skipped question", error);
+        }
+      }
       setMessages((currentMessages) => [
         ...currentMessages,
         {
@@ -255,7 +308,7 @@ function InterviewRoom({ onNavigate }) {
     }
 
     if (questionNumber >= totalQuestions) {
-      onNavigate("report");
+      finishInterview();
       return;
     }
 
@@ -266,13 +319,16 @@ function InterviewRoom({ onNavigate }) {
     recognitionRef.current?.stop();
     loadQuestion({
       field: selectedField,
-      difficulty: selectedDifficulty
+      difficulty: selectedDifficulty,
+      exclude_ids: Array.from(seenQuestionIdsRef.current)
     });
   }, [
     hasAnsweredCurrentQuestion,
     loadQuestion,
-    onNavigate,
+    finishInterview,
+    interviewSessionId,
     questionNumber,
+    question?.id,
     selectedDifficulty,
     selectedField,
     totalQuestions
@@ -293,7 +349,7 @@ function InterviewRoom({ onNavigate }) {
 
         if (nextSeconds >= totalInterviewSeconds) {
           window.clearInterval(timerId);
-          onNavigate("report");
+          window.setTimeout(() => finishInterview(), 0);
         }
 
         return nextSeconds;
@@ -312,7 +368,7 @@ function InterviewRoom({ onNavigate }) {
     }, 1000);
 
     return () => window.clearInterval(timerId);
-  }, [goToNextQuestion, isInterviewStarted, onNavigate, secondsPerQuestion, totalInterviewSeconds]);
+  }, [finishInterview, goToNextQuestion, isInterviewStarted, secondsPerQuestion, totalInterviewSeconds]);
 
   const handleToggleCamera = async () => {
     if (isCameraOn) {
@@ -368,7 +424,7 @@ function InterviewRoom({ onNavigate }) {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
+    recognition.lang = speechLanguage;
     recognition.interimResults = true;
     recognition.continuous = true;
 
@@ -475,7 +531,12 @@ function InterviewRoom({ onNavigate }) {
 
       previousFaceRef.current = face;
       drawFaceBox(face, videoWidth, videoHeight);
-      setFaceMetrics({ eyeContact, confidence, engagement, stability });
+      const metrics = { eyeContact, confidence, engagement, stability };
+      setFaceMetrics(metrics);
+      faceMetricTotalsRef.current.eyeContact += eyeContact;
+      faceMetricTotalsRef.current.confidence += confidence;
+      faceMetricTotalsRef.current.engagement += engagement;
+      faceMetricTotalsRef.current.count += 1;
       setFaceStatus("Face detected");
     };
 
@@ -553,18 +614,38 @@ function InterviewRoom({ onNavigate }) {
     };
   }, [getFaceLandmarker, isCameraOn]);
 
-  const handleApplyFilters = () => {
+  const handleApplyFilters = async () => {
+    if (isStartingInterview) return;
+    setIsStartingInterview(true);
     setQuestionNumber(1);
     setElapsedSeconds(0);
     setQuestionElapsedSeconds(0);
     setInterviewSessionId(null);
+    seenQuestionIdsRef.current = new Set();
+    faceMetricTotalsRef.current = { eyeContact: 0, confidence: 0, engagement: 0, count: 0 };
     autoAdvanceRef.current = false;
-    setIsInterviewStarted(true);
+
+    try {
+      const session = await startInterviewSession({
+        field: selectedField || null,
+        difficulty: selectedDifficulty || null,
+        duration_minutes: selectedDuration
+      });
+      setInterviewSessionId(session.interview_session_id);
+      localStorage.setItem("reportSessionId", String(session.interview_session_id));
+      setIsInterviewStarted(true);
+    } catch (error) {
+      console.error(error);
+      setQuestionError(error.message || "Unable to start the interview.");
+      setIsStartingInterview(false);
+      return;
+    }
 
     loadQuestion({
       field: selectedField,
       difficulty: selectedDifficulty
     });
+    setIsStartingInterview(false);
   };
 
   if (!isInterviewStarted) {
@@ -600,7 +681,19 @@ function InterviewRoom({ onNavigate }) {
                 <option value={60}>1 hour - 20 questions</option>
               </select>
             </label>
-            <button type="button" onClick={handleApplyFilters}>Apply</button>
+            <label>
+              Voice language
+              <select value={speechLanguage} onChange={(e) => setSpeechLanguage(e.target.value)}>
+                <option value="en-US">English</option>
+                <option value="fr-FR">Français</option>
+                <option value="ar-TN">العربية</option>
+              </select>
+            </label>
+            <p className="camera-status">Webcam analysis runs locally in your browser; no video is uploaded.</p>
+            <button type="button" onClick={handleApplyFilters} disabled={isStartingInterview}>
+              {isStartingInterview ? "Starting..." : "Apply"}
+            </button>
+            {questionError && <p className="auth-error">{questionError}</p>}
           </article>
         </section>
       </AppShell>
@@ -622,7 +715,7 @@ function InterviewRoom({ onNavigate }) {
           <button type="button" onClick={handleNextQuestion}>
             {questionNumber >= totalQuestions ? "View Report" : "Next Question"}
           </button>
-          <button type="button" onClick={() => onNavigate("report")}>End Interview</button>
+          <button type="button" onClick={finishInterview}>End Interview</button>
         </div>
       </div>
 
@@ -712,21 +805,21 @@ function InterviewRoom({ onNavigate }) {
             </div>
             <form className="response-box" onSubmit={handleSendResponse}>
               <textarea
-                placeholder={isSendingResponse ? "AI is thinking..." : "Type your response..."}
+                placeholder={hasAnsweredCurrentQuestion ? "Answer submitted. Continue to the next question." : isSendingResponse ? "AI is thinking..." : "Type your response..."}
                 value={responseText}
-                disabled={isSendingResponse}
+                disabled={isSendingResponse || hasAnsweredCurrentQuestion}
                 onChange={(e) => setResponseText(e.target.value)}
               />
               <button
                 className={isListening ? "dictate-button active-control" : "dictate-button"}
                 type="button"
                 onClick={handleToggleMic}
-                disabled={isSendingResponse}
+                disabled={isSendingResponse || hasAnsweredCurrentQuestion}
                 aria-label={isListening ? "Stop dictation" : "Start dictation"}
               >
                 <Icon name="mic" />
               </button>
-              <button type="submit" aria-label="Send response" disabled={isSendingResponse}>
+              <button type="submit" aria-label="Send response" disabled={isSendingResponse || hasAnsweredCurrentQuestion}>
                 <Icon name="send" />
               </button>
             </form>

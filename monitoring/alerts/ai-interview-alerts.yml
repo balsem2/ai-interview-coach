@@ -79,3 +79,23 @@ spec:
           annotations:
             summary: "High memory usage on AI Interview pod"
             description: "Pod {{ $labels.pod }} is using more than 400 MiB of memory for 5 minutes."
+
+        - alert: AIInterviewBackendHighErrorRate
+          expr: sum(rate(ai_interview_http_requests_total{status=~"5.."}[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            service: backend
+          annotations:
+            summary: "High backend error rate"
+            description: "The AI Interview backend is returning more than 0.1 server errors per second."
+
+        - alert: AIInterviewAIGenerationErrors
+          expr: increase(ai_interview_ai_generation_errors_total[10m]) > 5
+          for: 2m
+          labels:
+            severity: warning
+            service: ai
+          annotations:
+            summary: "Repeated AI generation failures"
+            description: "More than five AI generation failures occurred during the last ten minutes."

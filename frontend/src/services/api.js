@@ -2,6 +2,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api"
 
 async function apiRequest(path, options = {}) {
   const token = localStorage.getItem("token")
+  const { retry = true, ...requestOptions } = options
 
   let response
 
@@ -9,11 +10,11 @@ async function apiRequest(path, options = {}) {
     response = await fetch(
       `${API_BASE_URL}${path}`,
       {
-        ...options,
+        ...requestOptions,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...options.headers
+          ...requestOptions.headers
         },
       }
     )
@@ -25,7 +26,24 @@ async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401) {
+      const refreshToken = localStorage.getItem("refreshToken")
+
+      if (retry && refreshToken && path !== "/auth/refresh") {
+        const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken })
+        })
+
+        if (refreshResponse.ok) {
+          const refreshed = await refreshResponse.json()
+          localStorage.setItem("token", refreshed.access_token)
+          return apiRequest(path, { ...requestOptions, retry: false })
+        }
+      }
+
       localStorage.removeItem("token")
+      localStorage.removeItem("refreshToken")
       localStorage.removeItem("user")
       window.dispatchEvent(new Event("auth-expired"))
     }
@@ -69,7 +87,9 @@ export async function getRandomQuestion(filters = {}) {
   const params = new URLSearchParams()
 
   Object.entries(filters).forEach(([key, value]) => {
-    if (value) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => params.append(key, item))
+    } else if (value) {
       params.append(key, value)
     }
   })
@@ -113,9 +133,42 @@ export async function startInterviewSession(data) {
   )
 }
 
-export async function getFinalReport() {
+export async function completeInterviewSession(sessionId, data) {
   return apiRequest(
-    "/chat/report",
+    `/chat/session/${sessionId}/complete`,
+    {
+      method: "POST",
+      body: JSON.stringify(data)
+    }
+  )
+}
+
+export async function skipInterviewQuestion(sessionId, questionId) {
+  return apiRequest(
+    `/chat/session/${sessionId}/skip`,
+    {
+      method: "POST",
+      body: JSON.stringify({ question_id: questionId })
+    }
+  )
+}
+
+export async function getInterviewSessions() {
+  return apiRequest("/chat/sessions", { method: "GET" })
+}
+
+export async function getFinalReport(sessionId = null) {
+  return apiRequest(
+    sessionId ? `/chat/session/${sessionId}/report` : "/chat/report",
+    {
+      method: "GET"
+    }
+  )
+}
+
+export async function getAnalyticsSummary() {
+  return apiRequest(
+    "/analytics/summary",
     {
       method: "GET"
     }

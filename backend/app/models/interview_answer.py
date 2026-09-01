@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -14,4 +14,5 @@ class InterviewAnswer(Base):
     answer_text = Column(Text, nullable=False)
     ai_feedback = Column(Text)
     score = Column(Integer)
+    status = Column(String(30), nullable=False, default="answered")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
