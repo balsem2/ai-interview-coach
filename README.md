@@ -331,6 +331,55 @@ L'application fonctionne actuellement sur K3s avec:
 - dashboard `AI Interview Monitoring` disponible
 - alertes Prometheus `ai-interview-alerts` installees
 
+## Troubleshooting & Maintenance
+
+### Restart Docker et services
+
+Si Docker Desktop s'arrête ou que les services ne répondent pas:
+
+```powershell
+# Redémarrer Docker Desktop
+Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+Start-Sleep -Seconds 10
+
+# Vérifier Docker
+docker version
+
+# Relancer tous les services
+docker compose up -d
+```
+
+### Charger le modèle Ollama
+
+Après un restart, charger le modèle llama3.2:1b:
+
+```powershell
+docker compose exec ollama ollama pull llama3.2:1b
+```
+
+### Tests de performance
+
+Performance testée après restart (2026-09-01):
+
+| Test | Résultat | Temps |
+| --- | --- | --- |
+| Login | ✅ Token généré | < 1s |
+| Démarrage session | ✅ Session créée (ID=73) | < 1s |
+| Première réponse IA | ✅ Score 70 | 0.02s |
+| Deuxième réponse IA | ✅ Score 80 | 15.17s |
+| Timeout | ✅ Aucun | - |
+
+Exemple réponse API:
+```json
+{
+  "reply": "Strong answer. You gave a clear explanation and connected it to the question.",
+  "score": 80,
+  "interview_session_id": 73
+}
+```
+
+**Conclusion:** Le système est stable et performant. Ollama génère des feedbacks pertinents sans timeout.
+
 ## Prochaines etapes
 
 - Configurer les notifications Alertmanager vers email, Slack ou Teams avec les credentials de production.
