@@ -365,12 +365,3 @@ docker compose exec ollama ollama pull llama3.2:1b
 ```
 
 **See:** [Full Troubleshooting Guide](docs/INSTALLATION_GUIDE.md#troubleshooting)
-
-
-
-- Configure Alertmanager for production notifications
-- Enable TLS with cert-manager
-- Implement enhanced webcam analysis
-- Externaliser les sauvegardes vers un stockage objet hors cluster
-- Renforcer l'analyse faciale avec de vrais indicateurs webcam
-- Ajouter une transcription serveur pour les navigateurs sans Web Speech API
