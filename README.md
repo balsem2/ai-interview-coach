@@ -110,21 +110,27 @@ ai-interview-coach/
   setup-env.ps1         Creation automatique du fichier backend/.env
 ```
 
-## Prerequis
+## Prerequis & Documentation
 
-Pour lancer le projet en local avec Docker Compose:
+### Local Development
 
 - Docker Desktop
 - Git
 - Ollama image via Docker Compose
+- Python 3.10+
+- Node.js 18+
 
-Pour le deploiement Kubernetes:
+**See:** [Complete Installation Guide](docs/INSTALLATION_GUIDE.md)
 
-- Une VM Ubuntu
+### Production Deployment (Kubernetes)
+
+- Une VM Ubuntu 20.04+
 - K3s installe
 - Ansible installe dans WSL ou Linux
 - Acces SSH vers la VM
 - Docker/GHCR pour publier les images
+
+**See:** [K3s Deployment Guide](docs/INSTALLATION_GUIDE.md#kubernetes-k3s-production-deployment)
 
 ## Lancement local avec Docker Compose
 
@@ -331,60 +337,40 @@ L'application fonctionne actuellement sur K3s avec:
 - dashboard `AI Interview Monitoring` disponible
 - alertes Prometheus `ai-interview-alerts` installees
 
+## Documentation
+
+Comprehensive guides for all aspects of the project:
+
+| Guide | Purpose |
+|-------|---------|
+| [Installation Guide](docs/INSTALLATION_GUIDE.md) | Local development, Docker Compose, K3s deployment |
+| [Alertmanager Setup](docs/production/ALERTMANAGER_SETUP.md) | Email, Slack, Teams notifications |
+| [Webcam Analysis](docs/production/WEBCAM_ANALYSIS.md) | Privacy, metrics, enhancement roadmap |
+| [Docker Notes](DOCKER.md) | Container troubleshooting |
+
 ## Troubleshooting & Maintenance
 
-### Restart Docker et services
-
-Si Docker Desktop s'arrête ou que les services ne répondent pas:
+If Docker Desktop or services stop unexpectedly:
 
 ```powershell
-# Redémarrer Docker Desktop
+# Restart Docker Desktop
 Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 Start-Sleep -Seconds 10
 
-# Vérifier Docker
-docker version
-
-# Relancer tous les services
+# Restart services
 docker compose up -d
-```
 
-### Charger le modèle Ollama
-
-Après un restart, charger le modèle llama3.2:1b:
-
-```powershell
+# Load Ollama model
 docker compose exec ollama ollama pull llama3.2:1b
 ```
 
-### Tests de performance
-
-Performance testée après restart (2026-09-01):
-
-| Test | Résultat | Temps |
-| --- | --- | --- |
-| Login | ✅ Token généré | < 1s |
-| Démarrage session | ✅ Session créée (ID=73) | < 1s |
-| Première réponse IA | ✅ Score 70 | 0.02s |
-| Deuxième réponse IA | ✅ Score 80 | 15.17s |
-| Timeout | ✅ Aucun | - |
-
-Exemple réponse API:
-```json
-{
-  "reply": "Strong answer. You gave a clear explanation and connected it to the question.",
-  "score": 80,
-  "interview_session_id": 73
-}
-```
-
-**Conclusion:** Le système est stable et performant. Ollama génère des feedbacks pertinents sans timeout.
+**See:** [Full Troubleshooting Guide](docs/INSTALLATION_GUIDE.md#troubleshooting)
 
 ## Prochaines etapes
 
-- Configurer les notifications Alertmanager vers email, Slack ou Teams avec les credentials de production.
-- Configurer un domaine public, TLS et cert-manager.
-- Externaliser les sauvegardes vers un stockage objet hors cluster.
-- Renforcer l'analyse faciale avec de vrais indicateurs webcam.
-- Ajouter une transcription serveur pour les navigateurs sans Web Speech API.
-- Ameliorer la documentation d'installation.
+- Configure Alertmanager for production notifications
+- Enable TLS with cert-manager
+- Implement enhanced webcam analysis
+- Externaliser les sauvegardes vers un stockage objet hors cluster
+- Renforcer l'analyse faciale avec de vrais indicateurs webcam
+- Ajouter une transcription serveur pour les navigateurs sans Web Speech API
