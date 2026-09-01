@@ -366,7 +366,7 @@ docker compose exec ollama ollama pull llama3.2:1b
 
 **See:** [Full Troubleshooting Guide](docs/INSTALLATION_GUIDE.md#troubleshooting)
 
-## Prochaines etapes
+
 
 - Configure Alertmanager for production notifications
 - Enable TLS with cert-manager
