@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 import { AppShell, Icon } from "../components/AppShell";
+import { EnhancedMetricsDisplay, CompactMetricsDisplay } from "../components/EnhancedMetrics";
 import {
   completeInterviewSession,
   getQuestionFields,
@@ -10,6 +11,14 @@ import {
   skipInterviewQuestion,
   startInterviewSession
 } from "../services/api";
+import {
+  calculateEnhancedEyeContact,
+  analyzePosture,
+  analyzeFacialExpression,
+  assessLighting,
+  generateFeedback,
+  calculateOverallQualityScore
+} from "../utils/facialAnalysis";
 
 function AnalysisRow({ icon, label, value, width }) {
   return (
@@ -29,7 +38,10 @@ const emptyFaceMetrics = {
   eyeContact: 0,
   confidence: 0,
   engagement: 0,
-  stability: 0
+  stability: 0,
+  posture: 0,
+  expression: { expression: 'unknown', intensity: 0, isSmiling: false },
+  lighting: { brightness: 128, quality: 'unknown', recommendation: '' }
 };
 
 const clampScore = (value) => Math.max(0, Math.min(100, Math.round(value)));
@@ -84,6 +96,9 @@ function InterviewRoom({ onNavigate }) {
   const [cameraError, setCameraError] = useState("");
   const [faceStatus, setFaceStatus] = useState("Camera off");
   const [faceMetrics, setFaceMetrics] = useState(emptyFaceMetrics);
+  const [enhancedMetrics, setEnhancedMetrics] = useState(null);
+  const [feedbackList, setFeedbackList] = useState([]);
+  const [qualityScore, setQualityScore] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -508,7 +523,7 @@ function InterviewRoom({ onNavigate }) {
       }
     };
 
-    const updateMetricsFromBox = (face, videoWidth, videoHeight) => {
+    const updateMetricsFromBox = (face, videoWidth, videoHeight, landmarks, videoElement) => {
       const centerX = (face.x + face.width / 2) / videoWidth;
       const centerY = (face.y + face.height / 2) / videoHeight;
       const centerDistance = Math.hypot(centerX - 0.5, (centerY - 0.45) * 1.25);
@@ -529,11 +544,66 @@ function InterviewRoom({ onNavigate }) {
       const confidence = clampScore(eyeContact * 0.45 + sizeScore * 0.25 + stability * 0.3);
       const engagement = clampScore(eyeContact * 0.5 + stability * 0.3 + 20);
 
+      // Enhanced facial analysis
+      let enhancedMetricsData = {
+        eyeContact,
+        confidence,
+        engagement,
+        stability
+      };
+
+      if (landmarks && landmarks.length > 0) {
+        // Calculate enhanced eye contact using iris position
+        const enhancedEyeContact = calculateEnhancedEyeContact(landmarks, videoWidth, videoHeight);
+        enhancedMetricsData.eyeContact = (eyeContact + enhancedEyeContact) / 2;
+
+        // Analyze posture
+        const postureData = analyzePosture(landmarks);
+        enhancedMetricsData.posture = postureData.posture;
+        enhancedMetricsData.postureDetails = postureData;
+
+        // Analyze facial expression
+        const expressionData = analyzeFacialExpression(landmarks);
+        enhancedMetricsData.expression = expressionData;
+
+        // Assess lighting if we have video element
+        if (videoElement && videoElement.readyState >= 2) {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoElement, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            const lightingData = assessLighting(imageData, landmarks, videoWidth, videoHeight);
+            enhancedMetricsData.lighting = lightingData;
+          } catch (e) {
+            console.error('Error assessing lighting:', e);
+          }
+        }
+
+        // Generate feedback based on metrics
+        const feedback = generateFeedback(enhancedMetricsData);
+        setFeedbackList(feedback);
+
+        // Calculate overall quality score
+        const qualityData = calculateOverallQualityScore(enhancedMetricsData);
+        setQualityScore(qualityData);
+      }
+
       previousFaceRef.current = face;
       drawFaceBox(face, videoWidth, videoHeight);
-      const metrics = { eyeContact, confidence, engagement, stability };
+      const metrics = { 
+        eyeContact: enhancedMetricsData.eyeContact, 
+        confidence, 
+        engagement, 
+        stability 
+      };
       setFaceMetrics(metrics);
-      faceMetricTotalsRef.current.eyeContact += eyeContact;
+      setEnhancedMetrics(enhancedMetricsData);
+      
+      faceMetricTotalsRef.current.eyeContact += enhancedMetricsData.eyeContact;
       faceMetricTotalsRef.current.confidence += confidence;
       faceMetricTotalsRef.current.engagement += engagement;
       faceMetricTotalsRef.current.count += 1;
@@ -599,7 +669,9 @@ function InterviewRoom({ onNavigate }) {
             height: Math.min(videoHeight, maxY + paddingY) - Math.max(0, minY - paddingY)
           },
           videoWidth,
-          videoHeight
+          videoHeight,
+          landmarks,
+          video
         );
       } catch (error) {
         console.error(error);
@@ -774,6 +846,14 @@ function InterviewRoom({ onNavigate }) {
               width={`${faceMetrics.engagement}%`}
             />
           </article>
+
+          {isCameraOn && enhancedMetrics && (
+            <EnhancedMetricsDisplay 
+              metrics={enhancedMetrics}
+              feedback={feedbackList}
+              qualityScore={qualityScore}
+            />
+          )}
 
           <article className="card progress-card">
             <h2>Interview Progress</h2>
