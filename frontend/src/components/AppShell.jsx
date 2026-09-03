@@ -96,6 +96,20 @@ function Icon({ name }) {
       </>
     ),
     play: <path d="m9 6 10 6-10 6V6Z" />,
+    volume: (
+      <>
+        <path d="M11 5L6 9H2v6h4l5 4V5z" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </>
+    ),
+    volumeMute: (
+      <>
+        <path d="M11 5L6 9H2v6h4l5 4V5z" />
+        <path d="m22 9-6 6" />
+        <path d="m16 9 6 6" />
+      </>
+    ),
     arrow: <path d="M4 16 10 10l4 4 6-6M15 8h5v5" />
   };
 

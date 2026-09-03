@@ -103,6 +103,12 @@ function Login({ onNavigate, onAuthSuccess }) {
             />
           </label>
 
+          <div className="auth-inline-link">
+            <button className="auth-link" type="button" onClick={() => onNavigate("forgot-password")}>
+              Forgot password?
+            </button>
+          </div>
+
           <button className="auth-submit" type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Signing in..." : "Sign In"}
           </button>

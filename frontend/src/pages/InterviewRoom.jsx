@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 import { AppShell, Icon } from "../components/AppShell";
-import { EnhancedMetricsDisplay, CompactMetricsDisplay } from "../components/EnhancedMetrics";
+import { EnhancedMetricsDisplay } from "../components/EnhancedMetrics";
 import {
   completeInterviewSession,
   getQuestionFields,
@@ -20,38 +20,7 @@ import {
   calculateOverallQualityScore
 } from "../utils/facialAnalysis";
 
-function AnalysisRow({ icon, label, value, width }) {
-  return (
-    <div className="analysis-row">
-      <div>
-        <span><Icon name={icon} /> {label}</span>
-        <strong>{value}</strong>
-      </div>
-      <div className="progress-track">
-        <span style={{ width }} />
-      </div>
-    </div>
-  );
-}
-
-const emptyFaceMetrics = {
-  eyeContact: 0,
-  confidence: 0,
-  engagement: 0,
-  stability: 0,
-  posture: 0,
-  expression: { expression: 'unknown', intensity: 0, isSmiling: false },
-  lighting: { brightness: 128, quality: 'unknown', recommendation: '' }
-};
-
 const clampScore = (value) => Math.max(0, Math.min(100, Math.round(value)));
-
-const scoreLabel = (score) => {
-  if (score >= 80) return "Excellent";
-  if (score >= 60) return "Good";
-  if (score >= 35) return "Needs focus";
-  return "Low";
-};
 
 const questionCountByDuration = {
   15: 5,
@@ -72,6 +41,7 @@ function InterviewRoom({ onNavigate }) {
   const recognitionRef = useRef(null);
   const previousFaceRef = useRef(null);
   const autoAdvanceRef = useRef(false);
+  const advanceAfterAnswerRef = useRef(false);
   const faceLandmarkerRef = useRef(null);
   const faceLandmarkerPromiseRef = useRef(null);
   const faceMetricTotalsRef = useRef({ eyeContact: 0, confidence: 0, engagement: 0, count: 0 });
@@ -89,13 +59,17 @@ function InterviewRoom({ onNavigate }) {
   const [selectedDifficulty, setSelectedDifficulty] = useState("");
   const [selectedDuration, setSelectedDuration] = useState(15);
   const [speechLanguage, setSpeechLanguage] = useState("en-US");
+  const [isTtsEnabled, setIsTtsEnabled] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [currentlySpeakingId, setCurrentlySpeakingId] = useState(null);
+  const isTtsEnabledRef = useRef(true);
+  isTtsEnabledRef.current = isTtsEnabled;
   const [interviewSessionId, setInterviewSessionId] = useState(null);
   const [isInterviewStarted, setIsInterviewStarted] = useState(false);
   const [isStartingInterview, setIsStartingInterview] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [faceStatus, setFaceStatus] = useState("Camera off");
-  const [faceMetrics, setFaceMetrics] = useState(emptyFaceMetrics);
   const [enhancedMetrics, setEnhancedMetrics] = useState(null);
   const [feedbackList, setFeedbackList] = useState([]);
   const [qualityScore, setQualityScore] = useState(null);
@@ -111,18 +85,139 @@ function InterviewRoom({ onNavigate }) {
     }
   ]);
 
+  const currentAudioRef = useRef(null);
+  const utteranceRef = useRef(null);
+
+  const stopSpeaking = useCallback(() => {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch (e) {
+        console.warn("Audio stop warning:", e);
+      }
+      currentAudioRef.current = null;
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {
+        console.warn("Speech cancel warning:", e);
+      }
+    }
+    setIsSpeaking(false);
+    setCurrentlySpeakingId(null);
+  }, []);
+
+  const playWebSpeechFallback = useCallback((cleanText, messageId, lang) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setIsSpeaking(false);
+      setCurrentlySpeakingId(null);
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utteranceRef.current = utterance;
+      utterance.lang = lang || "en-US";
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        setCurrentlySpeakingId(messageId);
+      };
+
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        setCurrentlySpeakingId(null);
+      };
+
+      utterance.onerror = () => {
+        setIsSpeaking(false);
+        setCurrentlySpeakingId(null);
+      };
+
+      setTimeout(() => {
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utterance);
+      }, 50);
+    } catch (e) {
+      console.warn("Fallback speech failed:", e);
+      setIsSpeaking(false);
+      setCurrentlySpeakingId(null);
+    }
+  }, []);
+
+  const speakText = useCallback((text, messageId = null, lang = speechLanguage) => {
+    if (!text) return;
+
+    stopSpeaking();
+
+    // Clean text of markdown, URLs, and code
+    const cleanText = text
+      .replace(/[*_#`[\]()]/g, " ")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!cleanText) return;
+
+    // 1. Play high quality MP3 Audio via backend TTS
+    try {
+      const targetLang = (lang || "en").split("-")[0].toLowerCase();
+      const audioUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${encodeURIComponent(targetLang)}`;
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+
+      audio.onplay = () => {
+        setIsSpeaking(true);
+        setCurrentlySpeakingId(messageId);
+      };
+
+      audio.onended = () => {
+        setIsSpeaking(false);
+        setCurrentlySpeakingId(null);
+        currentAudioRef.current = null;
+      };
+
+      audio.onerror = () => {
+        console.warn("Backend TTS stream failed, attempting browser Web Speech fallback");
+        currentAudioRef.current = null;
+        playWebSpeechFallback(cleanText, messageId, lang);
+      };
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("Audio play prevented, fallback to Web Speech:", err);
+          playWebSpeechFallback(cleanText, messageId, lang);
+        });
+      }
+    } catch (err) {
+      console.warn("Audio construction failed, fallback to Web Speech:", err);
+      playWebSpeechFallback(cleanText, messageId, lang);
+    }
+  }, [playWebSpeechFallback, speechLanguage, stopSpeaking]);
+
   const loadQuestion = useCallback((filters = {}) => {
     setIsLoadingQuestion(true);
     setQuestionError("");
     setScore(null);
     setHasAnsweredCurrentQuestion(false);
+    stopSpeaking();
 
     getRandomQuestion(filters)
       .then((data) => {
         if (data.id) seenQuestionIdsRef.current.add(data.id);
         setQuestion(data);
         setQuestionError("");
-        setMessages([
+        const questionText = data.question_text || data.question;
+        const newMessages = [
           {
             id: 1,
             role: "assistant",
@@ -131,9 +226,16 @@ function InterviewRoom({ onNavigate }) {
           {
             id: 2,
             role: "assistant",
-            text: data.question_text || data.question
+            text: questionText
           }
-        ]);
+        ];
+        setMessages(newMessages);
+
+        if (isTtsEnabledRef.current && questionText) {
+          window.setTimeout(() => {
+            speakText(questionText, 2);
+          }, 350);
+        }
       })
       .catch((error) => {
         console.error(error);
@@ -142,7 +244,7 @@ function InterviewRoom({ onNavigate }) {
       .finally(() => {
         setIsLoadingQuestion(false);
       });
-  }, []);
+  }, [speakText, stopSpeaking]);
 
   const getFaceLandmarker = useCallback(async () => {
     if (faceLandmarkerRef.current) {
@@ -175,12 +277,22 @@ function InterviewRoom({ onNavigate }) {
       .then((data) => setFields(data.slice(0, 40)))
       .catch((error) => console.error(error));
 
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+
     return () => {
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
 
       recognitionRef.current?.stop();
+
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
     };
   }, []);
 
@@ -196,6 +308,7 @@ function InterviewRoom({ onNavigate }) {
   const formattedQuestionTime = `${String(Math.floor(questionRemainingSeconds / 60)).padStart(2, "0")}:${String(questionRemainingSeconds % 60).padStart(2, "0")}`;
 
   const finishInterview = useCallback(async () => {
+    stopSpeaking();
     if (interviewSessionId) {
       autoAdvanceRef.current = true;
       if (!hasAnsweredCurrentQuestion && question?.id) {
@@ -266,6 +379,7 @@ function InterviewRoom({ onNavigate }) {
 
       setScore(aiResponse.score);
       setInterviewSessionId(aiResponse.interview_session_id || activeSessionId);
+      advanceAfterAnswerRef.current = true;
       setHasAnsweredCurrentQuestion(true);
 
       setMessages((currentMessages) => [
@@ -292,6 +406,7 @@ function InterviewRoom({ onNavigate }) {
   };
 
   const goToNextQuestion = useCallback(async ({ allowSkip = false } = {}) => {
+    stopSpeaking();
     if (!allowSkip && !hasAnsweredCurrentQuestion) {
       setMessages((currentMessages) => [
         ...currentMessages,
@@ -354,6 +469,15 @@ function InterviewRoom({ onNavigate }) {
   };
 
   useEffect(() => {
+    if (!hasAnsweredCurrentQuestion || !advanceAfterAnswerRef.current) {
+      return;
+    }
+
+    advanceAfterAnswerRef.current = false;
+    goToNextQuestion();
+  }, [goToNextQuestion, hasAnsweredCurrentQuestion]);
+
+  useEffect(() => {
     if (!isInterviewStarted) {
       return undefined;
     }
@@ -396,7 +520,9 @@ function InterviewRoom({ onNavigate }) {
         overlayRef.current.getContext("2d")?.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
       }
       previousFaceRef.current = null;
-      setFaceMetrics(emptyFaceMetrics);
+      setEnhancedMetrics(null);
+      setFeedbackList([]);
+      setQualityScore(null);
       setIsCameraOn(false);
       setFaceStatus("Camera off");
       return;
@@ -425,6 +551,7 @@ function InterviewRoom({ onNavigate }) {
   };
 
   const handleToggleMic = () => {
+    stopSpeaking();
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
@@ -554,7 +681,7 @@ function InterviewRoom({ onNavigate }) {
 
       if (landmarks && landmarks.length > 0) {
         // Calculate enhanced eye contact using iris position
-        const enhancedEyeContact = calculateEnhancedEyeContact(landmarks, videoWidth, videoHeight);
+        const enhancedEyeContact = calculateEnhancedEyeContact(landmarks);
         enhancedMetricsData.eyeContact = (eyeContact + enhancedEyeContact) / 2;
 
         // Analyze posture
@@ -594,13 +721,6 @@ function InterviewRoom({ onNavigate }) {
 
       previousFaceRef.current = face;
       drawFaceBox(face, videoWidth, videoHeight);
-      const metrics = { 
-        eyeContact: enhancedMetricsData.eyeContact, 
-        confidence, 
-        engagement, 
-        stability 
-      };
-      setFaceMetrics(metrics);
       setEnhancedMetrics(enhancedMetricsData);
       
       faceMetricTotalsRef.current.eyeContact += enhancedMetricsData.eyeContact;
@@ -613,12 +733,9 @@ function InterviewRoom({ onNavigate }) {
     const markNoFace = () => {
       clearFaceBox();
       previousFaceRef.current = null;
-      setFaceMetrics((currentMetrics) => ({
-        eyeContact: clampScore(currentMetrics.eyeContact * 0.7),
-        confidence: clampScore(currentMetrics.confidence * 0.7),
-        engagement: clampScore(currentMetrics.engagement * 0.7),
-        stability: clampScore(currentMetrics.stability * 0.7)
-      }));
+      setEnhancedMetrics(null);
+      setFeedbackList([]);
+      setQualityScore(null);
       setFaceStatus("No face detected");
     };
 
@@ -688,6 +805,17 @@ function InterviewRoom({ onNavigate }) {
 
   const handleApplyFilters = async () => {
     if (isStartingInterview) return;
+
+    // Unlock browser audio/speech on user interaction
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+      } catch (e) {
+        console.warn("Speech resume warning:", e);
+      }
+    }
+
     setIsStartingInterview(true);
     setQuestionNumber(1);
     setElapsedSeconds(0);
@@ -761,9 +889,18 @@ function InterviewRoom({ onNavigate }) {
                 <option value="ar-TN">العربية</option>
               </select>
             </label>
-            <p className="camera-status">Webcam analysis runs locally in your browser; no video is uploaded.</p>
+            <label className="checkbox-field" style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "12px", cursor: "pointer", fontSize: "0.95rem" }}>
+              <input
+                type="checkbox"
+                checked={isTtsEnabled}
+                onChange={(e) => setIsTtsEnabled(e.target.checked)}
+                style={{ width: "18px", height: "18px", accentColor: "#7c5cf3", cursor: "pointer" }}
+              />
+              <span>Read interview questions aloud (Text-to-Speech)</span>
+            </label>
+            <p className="camera-status">Questions will be spoken automatically by the AI Interviewer.</p>
             <button type="button" onClick={handleApplyFilters} disabled={isStartingInterview}>
-              {isStartingInterview ? "Starting..." : "Apply"}
+              {isStartingInterview ? "Starting..." : "Start Interview"}
             </button>
             {questionError && <p className="auth-error">{questionError}</p>}
           </article>
@@ -825,35 +962,12 @@ function InterviewRoom({ onNavigate }) {
             </div>
           </article>
 
-          <article className="card live-card">
-            <h2>Live Analysis</h2>
-            <AnalysisRow
-              icon="eye"
-              label="Eye Contact"
-              value={isCameraOn ? `${scoreLabel(faceMetrics.eyeContact)} (${faceMetrics.eyeContact}%)` : "Camera off"}
-              width={`${faceMetrics.eyeContact}%`}
-            />
-            <AnalysisRow
-              icon="smile"
-              label="Confidence"
-              value={isCameraOn ? `${scoreLabel(faceMetrics.confidence)} (${faceMetrics.confidence}%)` : "Camera off"}
-              width={`${faceMetrics.confidence}%`}
-            />
-            <AnalysisRow
-              icon="pulse"
-              label="Engagement"
-              value={isCameraOn ? `${scoreLabel(faceMetrics.engagement)} (${faceMetrics.engagement}%)` : "Camera off"}
-              width={`${faceMetrics.engagement}%`}
-            />
-          </article>
-
-          {isCameraOn && enhancedMetrics && (
-            <EnhancedMetricsDisplay 
-              metrics={enhancedMetrics}
-              feedback={feedbackList}
-              qualityScore={qualityScore}
-            />
-          )}
+          <EnhancedMetricsDisplay
+            metrics={isCameraOn ? enhancedMetrics : null}
+            feedback={feedbackList}
+            qualityScore={qualityScore}
+            isLoading={isCameraOn && !enhancedMetrics}
+          />
 
           <article className="card progress-card">
             <h2>Interview Progress</h2>
@@ -872,15 +986,79 @@ function InterviewRoom({ onNavigate }) {
 
         <div className="interview-main">
           <article className="card assistant-card">
-            <header>
-              <h2>AI Interview Assistant</h2>
+            <header className="assistant-card-header">
+              <div className="assistant-header-title">
+                <div className="ai-avatar-badge">
+                  <Icon name="sparkle" />
+                </div>
+                <div>
+                  <h2>AI Interview Assistant</h2>
+                  <div className="ai-status-indicator">
+                    {isSpeaking ? (
+                      <span className="speaking-badge">
+                        <span className="sound-wave-bar"></span>
+                        <span className="sound-wave-bar"></span>
+                        <span className="sound-wave-bar"></span>
+                        Speaking question...
+                      </span>
+                    ) : (
+                      <span className="online-badge">Ready</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="assistant-header-actions">
+                {isSpeaking && (
+                  <button
+                    type="button"
+                    className="tts-btn stop-speaking-btn"
+                    title="Stop voice"
+                    onClick={stopSpeaking}
+                  >
+                    <Icon name="volumeMute" />
+                    <span>Stop</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`tts-btn ${isTtsEnabled ? "active-tts" : ""}`}
+                  title={isTtsEnabled ? "Auto-speech is ON (click to mute)" : "Auto-speech is OFF (click to enable)"}
+                  onClick={() => {
+                    if (isSpeaking) stopSpeaking();
+                    setIsTtsEnabled((prev) => !prev);
+                  }}
+                >
+                  <Icon name={isTtsEnabled ? "volume" : "volumeMute"} />
+                  <span>{isTtsEnabled ? "Voice ON" : "Voice OFF"}</span>
+                </button>
+              </div>
             </header>
             <div className="chat-area">
               {isLoadingQuestion && <p className="message assistant">Loading question...</p>}
               {!isLoadingQuestion && messages.map((message) => (
-                <p className={`message ${message.role}`} key={message.id}>
-                  {message.text}
-                </p>
+                <div key={message.id} className={`message-row ${message.role}`}>
+                  <p className={`message ${message.role}`}>
+                    {message.text}
+                  </p>
+                  {message.role === "assistant" && (
+                    <button
+                      type="button"
+                      className={`msg-audio-btn ${currentlySpeakingId === message.id ? "active" : ""}`}
+                      title={currentlySpeakingId === message.id ? "Stop voice" : "Read aloud"}
+                      aria-label="Read question aloud"
+                      onClick={() => {
+                        if (currentlySpeakingId === message.id && isSpeaking) {
+                          stopSpeaking();
+                        } else {
+                          speakText(message.text, message.id);
+                        }
+                      }}
+                    >
+                      <Icon name={currentlySpeakingId === message.id ? "volumeMute" : "volume"} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
             <form className="response-box" onSubmit={handleSendResponse}>
@@ -913,4 +1091,3 @@ function InterviewRoom({ onNavigate }) {
 }
 
 export default InterviewRoom;
-

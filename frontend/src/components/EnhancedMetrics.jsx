@@ -1,6 +1,28 @@
-import React from 'react';
 import { Icon } from '../components/AppShell';
 import '../styles/EnhancedMetrics.css';
+
+function MetricBar({ label, value, icon, status }) {
+  let computedStatus = 'critical';
+  if (value >= 80) computedStatus = 'excellent';
+  else if (value >= 60) computedStatus = 'good';
+  else if (value >= 40) computedStatus = 'warning';
+  const statusClass = status || computedStatus;
+
+  return (
+    <div className={`metric-bar ${statusClass}`}>
+      <div className="metric-header">
+        <span className="metric-label">
+          <Icon name={icon} /> {label}
+        </span>
+        <span className="metric-value">{Math.round(value)}%</span>
+      </div>
+      <div className="progress-bar">
+        <div className="progress-fill" style={{ width: `${Math.min(100, value)}%` }} />
+      </div>
+      <span className="metric-status">{statusClass.toUpperCase()}</span>
+    </div>
+  );
+}
 
 /**
  * EnhancedMetricsDisplay Component
@@ -30,61 +52,49 @@ export function EnhancedMetricsDisplay({
 
   const {
     eyeContact = 0,
+    confidence = 0,
+    engagement = 0,
     posture = 0,
     expression = {},
     lighting = {},
     audioVisualSync = {}
   } = metrics;
 
-  const MetricBar = ({ label, value, icon, status }) => {
-    let statusClass = 'neutral';
-    if (value >= 80) statusClass = 'excellent';
-    else if (value >= 60) statusClass = 'good';
-    else if (value >= 40) statusClass = 'warning';
-    else statusClass = 'critical';
-
-    return (
-      <div className={`metric-bar ${statusClass}`}>
-        <div className="metric-header">
-          <span className="metric-label">
-            <Icon name={icon} /> {label}
-          </span>
-          <span className="metric-value">{Math.round(value)}%</span>
-        </div>
-        <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${Math.min(100, value)}%` }} />
-        </div>
-        <span className="metric-status">{statusClass.toUpperCase()}</span>
-      </div>
-    );
-  };
-
   return (
     <div className="enhanced-metrics">
       {/* Primary Metrics */}
       <section className="metrics-section">
-        <h3>Interview Quality Analysis</h3>
+        <h3>Live Interview Analysis</h3>
         
         <div className="primary-metrics">
           <MetricBar 
             label="Eye Contact" 
             value={eyeContact} 
             icon="eye"
-            status={eyeContact >= 70 ? 'good' : eyeContact >= 50 ? 'warning' : 'critical'}
+          />
+
+          <MetricBar
+            label="Confidence"
+            value={confidence}
+            icon="smile"
+          />
+
+          <MetricBar
+            label="Engagement"
+            value={engagement}
+            icon="pulse"
           />
           
           <MetricBar 
             label="Posture" 
             value={posture} 
             icon="user"
-            status={posture >= 70 ? 'good' : posture >= 50 ? 'warning' : 'critical'}
           />
           
           <MetricBar 
             label="Expression" 
             value={expression?.intensity || 0} 
             icon="smile"
-            status="info"
           />
         </div>
 
@@ -103,40 +113,6 @@ export function EnhancedMetricsDisplay({
                 {lighting.recommendation && (
                   <p className="recommendation">{lighting.recommendation}</p>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Expression Status */}
-          {expression?.expression && (
-            <div className={`metric-card expression-${expression.expression}`}>
-              <div className="card-icon">
-                {expression.isSmiling ? (
-                  <Icon name="smile" />
-                ) : expression.isFrowning ? (
-                  <Icon name="frown" />
-                ) : (
-                  <Icon name="meh" />
-                )}
-              </div>
-              <div className="card-content">
-                <h4>Expression</h4>
-                <p className="expression">{expression.expression.toUpperCase()}</p>
-                <p className="intensity">Intensity: {expression.intensity}%</p>
-              </div>
-            </div>
-          )}
-
-          {/* Posture Details */}
-          {typeof posture === 'object' && (
-            <div className={`metric-card posture-${posture?.alignment || 'neutral'}`}>
-              <div className="card-icon">
-                <Icon name="user" />
-              </div>
-              <div className="card-content">
-                <h4>Posture</h4>
-                <p className="alignment">{posture?.alignment?.toUpperCase() || 'NEUTRAL'}</p>
-                <p className="head-tilt">Head Tilt: {posture?.headTilt || 0}°</p>
               </div>
             </div>
           )}

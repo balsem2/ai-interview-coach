@@ -92,7 +92,7 @@ export const estimateGazeDirection = (landmarks) => {
  * @param {number} videoHeight - Video frame height
  * @returns {number} Eye contact score (0-100)
  */
-export const calculateEnhancedEyeContact = (landmarks, videoWidth, videoHeight) => {
+export const calculateEnhancedEyeContact = (landmarks) => {
   const gaze = estimateGazeDirection(landmarks);
   
   // Check if eyes are open
@@ -325,7 +325,7 @@ export const detectAudioVisualSync = (audioLevel, isMouthOpen, historyLength = 1
   try {
     let sync = 50; // Default neutral
     let status = 'neutral';
-    let confidence = 50;
+    let confidence = Math.min(70, 45 + Math.max(1, historyLength) * 5);
     
     // Audio present, mouth should be open
     if (audioLevel > 30 && !isMouthOpen) {

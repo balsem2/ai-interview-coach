@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { jsPDF } from "jspdf";
-
 import { AppShell, Icon } from "../components/AppShell";
 import { getFinalReport } from "../services/api";
+import { downloadInterviewReport } from "../utils/pdfReport";
 
 function MiniLineChart({ answers = [] }) {
   const scores = answers.length ? answers.map((answer) => Number(answer.score) || 0) : [0];
@@ -69,36 +68,16 @@ function Report({ onNavigate }) {
   const confidence = Math.round(aiReport?.confidence || 0);
   const eyeContact = Math.round(aiReport?.eye_contact || 0);
   const performanceLabel = overallScore >= 80 ? "Excellent Performance" : overallScore >= 55 ? "Good Progress" : "Needs Practice";
+  const performanceEmoji = overallScore >= 80 ? "✅" : overallScore >= 55 ? "📈" : "⚠️";
+  const confidenceEmoji = confidence >= 80 ? "😊" : confidence >= 55 ? "🙂" : "😐";
+  const eyeEmoji = eyeContact >= 80 ? "👀" : eyeContact >= 55 ? "🟡" : "⚠️";
 
   const handleDownloadPdf = async () => {
     setIsDownloadingPdf(true);
     setReportError("");
     try {
       const reportForPdf = aiReport || await getFinalReport(sessionId);
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const margin = 18;
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const maxLineWidth = pageWidth - margin * 2;
-      let y = 22;
-      const addTextBlock = (text, fontSize = 11, lineHeight = 7) => {
-        pdf.setFontSize(fontSize);
-        pdf.splitTextToSize(String(text), maxLineWidth).forEach((line) => {
-          if (y > pageHeight - margin) { pdf.addPage(); y = margin; }
-          pdf.text(line, margin, y); y += lineHeight;
-        });
-      };
-
-      pdf.setFont("helvetica", "bold"); pdf.setFontSize(20); pdf.text("AI Interview Report", margin, y); y += 12;
-      pdf.setFont("helvetica", "normal");
-      addTextBlock(`Field: ${reportForPdf.field || "General"}`, 12, 8);
-      addTextBlock(`Overall Score: ${Math.round(reportForPdf.average_score || 0)}%`, 12, 8);
-      addTextBlock(`Total Answers: ${reportForPdf.total_answers || 0}`, 12, 8);
-      addTextBlock(`Confidence: ${Math.round(reportForPdf.confidence || 0)}%`, 12, 8);
-      addTextBlock(`Eye Contact: ${Math.round(reportForPdf.eye_contact || 0)}%`, 12, 8); y += 4;
-      pdf.setFont("helvetica", "bold"); addTextBlock("AI Feedback & Recommendations", 14, 8);
-      pdf.setFont("helvetica", "normal"); addTextBlock(reportForPdf.summary || "No report available.");
-      pdf.save(`interview-report-${reportForPdf.interview_session_id || "latest"}.pdf`);
+      downloadInterviewReport(reportForPdf);
     } catch (error) {
       setReportError(error.message || "Unable to download PDF.");
     } finally {
@@ -119,28 +98,85 @@ function Report({ onNavigate }) {
   return (
     <AppShell active="report" onNavigate={onNavigate}>
       <div className="report-header">
-        <div><h1>Interview Report</h1><p>{aiReport?.field || "General"} · {aiReport?.difficulty || "Any level"} · {aiReport?.duration_minutes || 0} minutes</p></div>
-        <div className="report-actions"><button className="outline-button" type="button" onClick={handleShare}><Icon name="share" /> Share</button><button className="primary-button" type="button" onClick={handleDownloadPdf} disabled={isDownloadingPdf}><Icon name="download" /> {isDownloadingPdf ? "Preparing..." : "Download PDF"}</button></div>
+        <div>
+          <h1>📊 AI Interview Report</h1>
+          <p>{aiReport?.field || "General"} · {aiReport?.difficulty || "Any level"} · {aiReport?.duration_minutes || 0} minutes</p>
+        </div>
+        <div className="report-actions">
+          <button className="outline-button" type="button" onClick={handleShare}><Icon name="share" /> Share</button>
+          <button className="primary-button" type="button" onClick={handleDownloadPdf} disabled={isDownloadingPdf}><Icon name="download" /> {isDownloadingPdf ? "Preparing..." : "Download PDF"}</button>
+        </div>
       </div>
 
+      <div className="report-status-pill">{performanceEmoji} {performanceLabel}</div>
+
       <section className="report-stats">
-        <article className="score-card"><Icon name="medal" /><strong>{overallScore}%</strong><span>Overall Score</span><em>{performanceLabel}</em></article>
-        <article className="card report-stat"><div><p>Confidence Level</p><strong>{confidence}%</strong><span>Webcam estimate</span></div><div className="soft-icon purple"><Icon name="smile" /></div></article>
-        <article className="card report-stat"><div><p>Eye Contact</p><strong>{eyeContact}%</strong><span>Webcam estimate</span></div><div className="soft-icon purple"><Icon name="eye" /></div></article>
+        <article className="score-card">
+          <Icon name="medal" />
+          <strong>{overallScore}%</strong>
+          <span>Overall Score</span>
+          <em>{performanceEmoji} {performanceLabel}</em>
+        </article>
+        <article className="card report-stat">
+          <div>
+            <p>{confidenceEmoji} Confidence Level</p>
+            <strong>{confidence}%</strong>
+            <span>Webcam estimate</span>
+          </div>
+          <div className="soft-icon purple"><Icon name="smile" /></div>
+        </article>
+        <article className="card report-stat">
+          <div>
+            <p>{eyeEmoji} Eye Contact</p>
+            <strong>{eyeContact}%</strong>
+            <span>Webcam estimate</span>
+          </div>
+          <div className="soft-icon purple"><Icon name="eye" /></div>
+        </article>
       </section>
 
-      <section className="report-grid"><article className="card"><h2>Skills Assessment</h2><RadarChart report={aiReport} /></article><article className="card"><h2>Answer Scores</h2><MiniLineChart answers={aiReport?.answers} /></article></section>
-      <section className="card feedback-card"><h2>AI Feedback &amp; Recommendations</h2>{isLoadingReport && <p className="report-summary">Generating your AI report...</p>}{reportError && <p className="auth-error">{reportError}</p>}{aiReport && <p className="report-summary">{aiReport.summary}</p>}</section>
+      <section className="report-grid">
+        <article className="card">
+          <h2>🧠 Skills Assessment</h2>
+          <RadarChart report={aiReport} />
+        </article>
+        <article className="card">
+          <h2>📈 Answer Scores</h2>
+          <MiniLineChart answers={aiReport?.answers} />
+        </article>
+      </section>
+
+      <section className="card feedback-card">
+        <h2>💬 AI Feedback &amp; Recommendations</h2>
+        {isLoadingReport && <p className="report-summary">Generating your AI report...</p>}
+        {reportError && <p className="auth-error">{reportError}</p>}
+        {aiReport && <p className="report-summary">{aiReport.summary}</p>}
+      </section>
 
       <section className="card breakdown-card">
-        <h2>Question-by-Question Breakdown</h2>
+        <h2>🧾 Question-by-Question Breakdown</h2>
         {!aiReport?.answers?.length && <p>No answers saved for this interview.</p>}
         {aiReport?.answers?.map((answer, index) => (
-          <div className="breakdown-row" key={`${answer.question}-${index}`}><span>{index + 1}</span><div><strong>{answer.question}</strong><em>{answer.feedback}</em></div><strong>{answer.score || 0}%</strong></div>
+          <div className="breakdown-row" key={`${answer.question}-${index}`}>
+            <span>{index + 1}</span>
+            <div>
+              <strong>{answer.question}</strong>
+              <em>{answer.feedback}</em>
+            </div>
+            <strong>{answer.score || 0}%</strong>
+          </div>
         ))}
       </section>
 
-      <section className="practice-cta"><Icon name="sparkle" /><h2>Ready for More Practice?</h2><p>Keep improving your interview skills with personalized AI coaching</p><div><button type="button" onClick={() => onNavigate("interview")}>Start New Interview</button><button type="button" onClick={() => onNavigate("dashboard")}>Back to Dashboard</button></div></section>
+      <section className="practice-cta">
+        <Icon name="sparkle" />
+        <h2>🚀 Ready for More Practice?</h2>
+        <p>Keep improving your interview skills with personalized AI coaching</p>
+        <div>
+          <button type="button" onClick={() => onNavigate("interview")}>Start New Interview</button>
+          <button type="button" onClick={() => onNavigate("dashboard")}>Back to Dashboard</button>
+        </div>
+      </section>
     </AppShell>
   );
 }
