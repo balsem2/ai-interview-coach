@@ -27,6 +27,11 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
+          SECRET_KEY: "ci-secret-key-for-testing"
+          ALGORITHM: "HS256"
+          ACCESS_TOKEN_EXPIRE_MINUTES: "60"
         run: python -m unittest discover -s tests
 
       - name: Set up Node.js
